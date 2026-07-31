@@ -4,7 +4,7 @@ namespace Zion\WordPressLicense;
 
 final class LicenseManager
 {
-    public const VERSION = '0.1.10';
+    public const VERSION = '0.1.11';
 
     private ?LicensePrompt $prompt = null;
 
@@ -105,6 +105,14 @@ final class LicenseManager
     public function status(): array
     {
         $response = $this->runtimeConfiguration();
+        $details = function_exists('get_option') ? get_option($this->detailsOption(), []) : [];
+        if (is_array($details)) {
+            foreach (['expires_at', 'license_state', 'next_ping_after'] as $key) {
+                if (array_key_exists($key, $details)) {
+                    $response[$key] = $details[$key];
+                }
+            }
+        }
         $response['license_state'] = get_option($this->licenseStateOption(), 'unknown');
         $response['license_key_present'] = (bool) get_option($this->config->licenseOption(), '');
         $response['callback'] = $this->callbackStatus();
@@ -125,6 +133,7 @@ final class LicenseManager
             'wordpress_version' => function_exists('get_bloginfo') ? get_bloginfo('version') : null,
             'php_version' => PHP_VERSION,
             'license_key' => $licenseKey,
+            'sdk_version' => self::VERSION,
             'callback_url' => $this->callbackUrl(),
             'callback_secret' => $this->callbackSecret(),
         ];
@@ -139,7 +148,13 @@ final class LicenseManager
             array_filter($payload),
             ['X-Zion-Product-Key' => $this->config->productKey],
         );
-        $this->storeRuntimeConfiguration($response['configuration'] ?? []);
+        $this->storeRuntimeConfiguration(array_merge(
+            is_array($response['configuration'] ?? null) ? $response['configuration'] : [],
+            [
+                'expires_at' => $response['expires_at'] ?? null,
+                'license_state' => $response['license_state'] ?? null,
+            ],
+        ));
         update_option($this->licenseStateOption(), sanitize_key((string) ($response['license_state'] ?? 'unknown')), false);
         update_option($this->lastPingOption(), current_time('mysql'), false);
         update_option($this->detailsOption(), $response, false);

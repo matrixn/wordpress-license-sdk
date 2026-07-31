@@ -66,12 +66,23 @@ final class ServerCommandEndpoint
 
         $this->manager->storeRuntimeConfiguration($configuration);
 
-        if (($payload['command'] ?? null) === 'update_available' && function_exists('wp_update_plugins')) {
+        $autoUpdate = false;
+        if (in_array(($payload['command'] ?? null), ['update_available', 'sync_configuration'], true) && function_exists('wp_update_plugins')) {
             if (function_exists('delete_site_transient')) {
                 delete_site_transient('update_plugins');
             }
 
             wp_update_plugins();
+
+            $plugin = plugin_basename($this->config->pluginFile);
+            $enabled = in_array($plugin, (array) get_site_option('auto_update_plugins', []), true)
+                || (function_exists('wp_is_auto_update_enabled_for_type') && wp_is_auto_update_enabled_for_type('plugin'));
+            if ($enabled && ! empty($configuration['update_available'])) {
+                require_once ABSPATH.'wp-admin/includes/class-wp-upgrader.php';
+                $skin = class_exists('Automatic_Upgrader_Skin') ? new \Automatic_Upgrader_Skin() : new \WP_Ajax_Upgrader_Skin();
+                $upgrader = new \Plugin_Upgrader($skin);
+                $autoUpdate = $upgrader->upgrade($plugin) !== false;
+            }
         }
 
         return [
@@ -80,6 +91,7 @@ final class ServerCommandEndpoint
             'plugin_version' => $this->manager->installedVersion(),
             'update_available' => (bool) ($configuration['update_available'] ?? false),
             'latest_version' => $configuration['latest_version'] ?? null,
+            'auto_update_attempted' => $autoUpdate,
         ];
     }
 }

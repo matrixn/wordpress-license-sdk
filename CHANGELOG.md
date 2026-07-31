@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.11] - 2026-08-01
+
+- Repară refresh-ul paginii de status și afișarea datei de expirare.
+- Raportează versiunea SDK către server și afișează diferențele de versiune.
+- Reîmprospătează update-urile WordPress și poate executa update automat când pluginul este configurat pentru actualizări automate.
+
 ## [0.1.10] - 2026-08-01
 
 - Update-urile WordPress sunt anunțate numai când serverul furnizează un URL ZIP semnat și temporar.
