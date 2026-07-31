@@ -21,6 +21,7 @@ final class LicenseManager
         (new WordPressUpdateAdapter($config, $this))->register();
         (new ServerCommandEndpoint($config, $this))->register();
         add_action('init', [$this, 'scheduleHeartbeat']);
+        add_action('admin_init', [$this, 'maybeRefreshFromAdmin']);
         add_action($this->heartbeatHook(), [$this, 'heartbeat']);
         register_activation_hook($config->pluginFile, [$this, 'markLicensePromptForActivation']);
     }
@@ -67,6 +68,52 @@ final class LicenseManager
         }
     }
 
+    public function maybeRefreshFromAdmin(): void
+    {
+        if (! current_user_can('manage_options') || ! function_exists('get_option')) {
+            return;
+        }
+
+        $last = (int) get_option($this->lastAdminRefreshOption(), 0);
+        if ($last > (time() - 600)) {
+            return;
+        }
+
+        $licenseKey = get_option($this->config->licenseOption()) ?: null;
+        if (! is_string($licenseKey) || $licenseKey === '') {
+            return;
+        }
+
+        update_option($this->lastAdminRefreshOption(), time(), false);
+        try {
+            $this->ping($licenseKey);
+        } catch (\Throwable) {
+            // Admin page loads must never break a WordPress site.
+        }
+    }
+
+    /** @return array{registered: bool, url: string} */
+    public function callbackStatus(): array
+    {
+        $secret = $this->callbackSecret();
+        $url = $this->callbackUrl();
+
+        return ['registered' => is_string($url) && $url !== '' && preg_match('/^[a-f0-9]{64}$/', $secret) === 1, 'url' => (string) $url];
+    }
+
+    /** @return array<string, mixed> */
+    public function status(): array
+    {
+        $response = $this->runtimeConfiguration();
+        $response['license_state'] = get_option($this->licenseStateOption(), 'unknown');
+        $response['license_key_present'] = (bool) get_option($this->config->licenseOption(), '');
+        $response['callback'] = $this->callbackStatus();
+        $response['last_ping_at'] = get_option($this->lastPingOption(), null);
+        $response['installed_version'] = $this->installedVersion();
+
+        return $response;
+    }
+
     /** @return array<string, mixed> */
     public function ping(?string $licenseKey = null): array
     {
@@ -93,6 +140,9 @@ final class LicenseManager
             ['X-Zion-Product-Key' => $this->config->productKey],
         );
         $this->storeRuntimeConfiguration($response['configuration'] ?? []);
+        update_option($this->licenseStateOption(), sanitize_key((string) ($response['license_state'] ?? 'unknown')), false);
+        update_option($this->lastPingOption(), current_time('mysql'), false);
+        update_option($this->detailsOption(), $response, false);
 
         return $response;
     }
@@ -200,6 +250,11 @@ final class LicenseManager
     {
         return 'zion_license_heartbeat_'.md5($this->config->productSlug);
     }
+
+    private function licenseStateOption(): string { return 'zion_license_state_'.md5($this->config->productSlug); }
+    private function detailsOption(): string { return 'zion_license_details_'.md5($this->config->productSlug); }
+    private function lastPingOption(): string { return 'zion_license_last_ping_'.md5($this->config->productSlug); }
+    private function lastAdminRefreshOption(): string { return 'zion_license_admin_refresh_'.md5($this->config->productSlug); }
 
     private function pingIntervalHours(): int
     {

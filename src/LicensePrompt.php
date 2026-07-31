@@ -23,6 +23,8 @@ final class LicensePrompt
         add_action('admin_init', [$this, 'handleSubmission']);
         add_action('admin_notices', [$this, 'renderNotice']);
         add_action('admin_footer', [$this, 'renderModal']);
+        add_action('admin_menu', [$this, 'registerStatusPage']);
+        add_filter('plugin_action_links_'.$this->pluginBasename(), [$this, 'pluginActionLinks']);
     }
 
     public function markActivated(): void
@@ -53,12 +55,15 @@ final class LicensePrompt
         }
 
         $action = isset($_POST['zion_license_action']) ? sanitize_key(wp_unslash($_POST['zion_license_action'])) : '';
-        if ('save' !== $action || ($this->config->productSlug !== sanitize_key(wp_unslash($_POST['zion_license_product'] ?? '')))) {
+        if (!in_array($action, ['save', 'refresh_status'], true) || ($this->config->productSlug !== sanitize_key(wp_unslash($_POST['zion_license_product'] ?? '')))) {
             return;
         }
 
         check_admin_referer($this->nonceAction());
-        $key = $this->normalizeKey((string) wp_unslash($_POST['zion_license_key'] ?? ''));
+        $key = $this->normalizeKey((string) get_option($this->config->licenseOption(), ''));
+        if ('save' === $action) {
+            $key = $this->normalizeKey((string) wp_unslash($_POST['zion_license_key'] ?? ''));
+        }
 
         if ('' === $key) {
             $this->flash('error', $this->t('Introdu o cheie de licență înainte de validare.'));
@@ -90,6 +95,43 @@ final class LicensePrompt
         }
 
         $this->redirect();
+    }
+
+    public function registerStatusPage(): void
+    {
+        add_management_page($this->t('Status licență'), $this->t('Status licență'), 'manage_options', $this->statusPageSlug(), [$this, 'renderStatusPage']);
+    }
+
+    /** @param array<int, string> $links @return array<int, string> */
+    public function pluginActionLinks(array $links): array
+    {
+        $links[] = sprintf('<a href="%s">%s</a>', esc_url($this->statusPageUrl()), esc_html($this->t('Status licență')));
+        return $links;
+    }
+
+    public function renderStatusPage(): void
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html($this->t('Nu ai permisiunea necesară.')));
+        }
+
+        $status = $this->manager->status();
+        $flash = get_transient($this->flashOption());
+        delete_transient($this->flashOption());
+        $callback = $status['callback'] ?? ['registered' => false, 'url' => ''];
+        ?>
+        <div class="wrap zion-license-status"><h1><?php echo esc_html($this->t('Status licență')); ?> — <?php echo esc_html($this->config->displayName()); ?></h1>
+            <?php if (is_array($flash)) : ?><div class="notice notice-<?php echo esc_attr($flash['type']); ?> is-dismissible"><p><?php echo esc_html($flash['message']); ?></p></div><?php endif; ?>
+            <div class="zion-license-grid">
+                <div class="zion-license-card"><span><?php echo esc_html($this->t('Status')); ?></span><strong class="zion-license-state zion-license-state--<?php echo esc_attr((string) ($status['license_state'] ?? 'unknown')); ?>"><?php echo esc_html(ucfirst((string) ($status['license_state'] ?? 'unknown'))); ?></strong></div>
+                <div class="zion-license-card"><span><?php echo esc_html($this->t('Versiune instalată')); ?></span><strong><?php echo esc_html((string) ($status['installed_version'] ?? '—')); ?></strong></div>
+                <div class="zion-license-card"><span><?php echo esc_html($this->t('Ultimul ping')); ?></span><strong><?php echo esc_html((string) ($status['last_ping_at'] ?? '—')); ?></strong></div>
+                <div class="zion-license-card"><span><?php echo esc_html($this->t('Callback securizat')); ?></span><strong class="<?php echo $callback['registered'] ? 'is-ok' : 'is-error'; ?>"><?php echo $callback['registered'] ? esc_html($this->t('Înregistrat')) : esc_html($this->t('Lipsește')); ?></strong></div>
+            </div>
+            <div class="zion-license-panel"><h2><?php echo esc_html($this->t('Verifică și actualizează datele')); ?></h2><p><?php echo esc_html($this->t('Verificarea face un ping securizat către server, actualizează detaliile licenței și înregistrează callback-ul pentru comenzi de update.')); ?></p><form method="post"><?php wp_nonce_field($this->nonceAction()); ?><input type="hidden" name="zion_license_action" value="refresh_status"><input type="hidden" name="zion_license_product" value="<?php echo esc_attr($this->config->productSlug); ?>"><button class="button button-primary button-hero" type="submit"><?php echo esc_html($this->t('Verifică conexiunea și actualizează')); ?></button></form></div>
+            <div class="zion-license-panel"><h2><?php echo esc_html($this->t('Detalii')); ?></h2><dl><dt><?php echo esc_html($this->t('Expiră la')); ?></dt><dd><?php echo esc_html((string) ($status['expires_at'] ?? '—')); ?></dd><dt><?php echo esc_html($this->t('Versiune disponibilă')); ?></dt><dd><?php echo esc_html((string) ($status['latest_version'] ?? '—')); ?></dd><dt><?php echo esc_html($this->t('Callback URL')); ?></dt><dd><code><?php echo esc_html((string) ($callback['url'] ?? '—')); ?></code></dd></dl></div>
+        </div><style>.zion-license-status{max-width:980px}.zion-license-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:24px 0}.zion-license-card,.zion-license-panel{background:#fff;border:1px solid #dcdcde;border-radius:12px;padding:22px;box-shadow:0 8px 28px rgba(16,24,40,.06)}.zion-license-card span{display:block;color:#646970;font-size:12px;text-transform:uppercase;letter-spacing:.08em}.zion-license-card strong{display:block;margin-top:10px;font-size:20px}.is-ok,.zion-license-state--active,.zion-license-state--free{color:#16803c}.is-error,.zion-license-state--unlicensed,.zion-license-state--unknown{color:#b42318}.zion-license-panel{margin:16px 0}.zion-license-panel h2{margin-top:0}.zion-license-panel dt{float:left;clear:left;width:180px;color:#646970;padding:7px 0}.zion-license-panel dd{margin-left:190px;padding:7px 0}.zion-license-panel code{word-break:break-all}@media(max-width:800px){.zion-license-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:480px){.zion-license-grid{grid-template-columns:1fr}.zion-license-panel dt{float:none;width:auto}.zion-license-panel dd{margin-left:0}}</style>
+        <?php
     }
 
     public function renderNotice(): void
@@ -165,6 +207,9 @@ final class LicensePrompt
     private function promptOption(): string { return 'zion_license_prompt_' . md5($this->config->productSlug); }
     private function stateOption(): string { return 'zion_license_state_' . md5($this->config->productSlug); }
     private function flashOption(): string { return 'zion_license_flash_' . md5($this->config->productSlug); }
+    private function pluginBasename(): string { return function_exists('plugin_basename') ? plugin_basename($this->config->pluginFile) : basename($this->config->pluginFile); }
+    private function statusPageSlug(): string { return 'zion-license-status-' . sanitize_key($this->config->productSlug); }
+    private function statusPageUrl(): string { return admin_url('admin.php?page=' . $this->statusPageSlug()); }
 
     private function flash(string $type, string $message): void { set_transient($this->flashOption(), ['type' => $type, 'message' => $message], MINUTE_IN_SECONDS); }
 

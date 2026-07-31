@@ -27,6 +27,13 @@ final class WordPressUpdateAdapter
 
         $plugin = plugin_basename($this->config->pluginFile);
         $installed = (string) ($transient->checked[$plugin] ?? $this->manager->installedVersion());
+        if ($this->manager->runtimeConfiguration() === [] && get_option($this->config->licenseOption(), '')) {
+            try {
+                $this->manager->ping((string) get_option($this->config->licenseOption()));
+            } catch (\Throwable) {
+                // Keep WordPress updates stable when the licensing server is temporarily unavailable.
+            }
+        }
         $update = $this->availableUpdate($installed);
 
         if ($update === null) {
