@@ -1,0 +1,85 @@
+<?php
+
+namespace Zion\WordPressLicense;
+
+use WP_Error;
+use WP_REST_Request;
+
+/** Receives authenticated server-to-plugin commands through the WordPress REST API. */
+final class ServerCommandEndpoint
+{
+    public function __construct(private readonly Config $config, private readonly LicenseManager $manager) {}
+
+    public function register(): void
+    {
+        if (! function_exists('add_action') || ! function_exists('register_rest_route')) {
+            return;
+        }
+
+        add_action('rest_api_init', function (): void {
+            register_rest_route('zion-license/v1', '/command', [
+                'methods' => 'POST',
+                'callback' => [$this, 'handle'],
+                'permission_callback' => [$this, 'authorize'],
+            ]);
+        });
+    }
+
+    public function authorize(WP_REST_Request $request): bool|WP_Error
+    {
+        $timestamp = (string) $request->get_header('X-Zion-Timestamp');
+        $nonce = (string) $request->get_header('X-Zion-Nonce');
+        $signature = (string) $request->get_header('X-Zion-Signature');
+
+        if (! ctype_digit($timestamp) || $nonce === '' || $signature === '' || abs(time() - (int) $timestamp) > 300) {
+            return new WP_Error('zion_invalid_signature', 'Invalid or expired Zion server signature.', ['status' => 401]);
+        }
+
+        $nonceKey = 'zion_license_nonce_'.md5($this->config->productSlug.$nonce);
+        if (function_exists('get_transient') && get_transient($nonceKey) !== false) {
+            return new WP_Error('zion_replayed_request', 'This Zion server request was already processed.', ['status' => 409]);
+        }
+
+        $expected = hash_hmac('sha256', implode("\n", [$timestamp, $nonce, $request->get_body()]), $this->manager->callbackSecret());
+        if (! hash_equals($expected, $signature)) {
+            return new WP_Error('zion_invalid_signature', 'Invalid Zion server signature.', ['status' => 401]);
+        }
+
+        if (function_exists('set_transient')) {
+            set_transient($nonceKey, '1', 10 * MINUTE_IN_SECONDS);
+        }
+
+        return true;
+    }
+
+    public function handle(WP_REST_Request $request): array|WP_Error
+    {
+        $payload = $request->get_json_params();
+        if (! is_array($payload) || ($payload['product_slug'] ?? null) !== $this->config->productSlug) {
+            return new WP_Error('zion_invalid_command', 'The command does not target this product.', ['status' => 422]);
+        }
+
+        $configuration = $payload['configuration'] ?? [];
+        if (! is_array($configuration)) {
+            return new WP_Error('zion_invalid_command', 'Invalid command configuration.', ['status' => 422]);
+        }
+
+        $this->manager->storeRuntimeConfiguration($configuration);
+
+        if (($payload['command'] ?? null) === 'update_available' && function_exists('wp_update_plugins')) {
+            if (function_exists('delete_site_transient')) {
+                delete_site_transient('update_plugins');
+            }
+
+            wp_update_plugins();
+        }
+
+        return [
+            'received' => true,
+            'sdk_version' => LicenseManager::VERSION,
+            'plugin_version' => $this->manager->installedVersion(),
+            'update_available' => (bool) ($configuration['update_available'] ?? false),
+            'latest_version' => $configuration['latest_version'] ?? null,
+        ];
+    }
+}
