@@ -81,8 +81,9 @@ final class WordPressUpdateAdapter
         $configuration = $this->manager->runtimeConfiguration();
         $latest = (string) ($configuration['latest_version'] ?? '');
         $available = (bool) ($configuration['update_available'] ?? false);
+        $package = (string) ($configuration['package_url'] ?? '');
 
-        if (! $available || $latest === '' || $installed === '' || version_compare($latest, $installed, '<=')) {
+        if (! $available || $latest === '' || $package === '' || $installed === '' || version_compare($latest, $installed, '<=')) {
             return null;
         }
 
@@ -92,8 +93,7 @@ final class WordPressUpdateAdapter
             'plugin' => plugin_basename($this->config->pluginFile),
             'new_version' => $latest,
             'url' => (string) ($configuration['details_url'] ?? rtrim($this->config->apiUrl, '/')),
-            // A ZIP download URL will be supplied by the server once release delivery is enabled.
-            'package' => (string) ($configuration['package_url'] ?? ''),
+            'package' => $package,
             'requires' => (string) ($configuration['requires_wordpress'] ?? ''),
             'requires_php' => (string) ($configuration['requires_php'] ?? ''),
             'icons' => [],

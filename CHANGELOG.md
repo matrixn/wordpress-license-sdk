@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.10] - 2026-08-01
+
+- Update-urile WordPress sunt anunțate numai când serverul furnizează un URL ZIP semnat și temporar.
+- ZIP-ul release-ului importat din GitHub este livrat prin serverul de licențe, fără expunerea repository-ului privat.
+
 Toate modificările sunt documentate aici începând cu primele commituri ale
 pachetului. Versiunile sunt publicate prin taguri Git.
 
