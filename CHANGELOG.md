@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.18] - 2026-08-01
+
+- Added the last four characters of the activated license to the read-only status modal.
+- Added the server-controlled paused/active update state to the status modal.
+
 ## [0.1.17] - 2026-08-01
 
 - Added the server-defined ping interval to the read-only license status modal.
