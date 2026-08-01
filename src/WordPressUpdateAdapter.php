@@ -242,7 +242,7 @@ final class WordPressUpdateAdapter
             return null;
         }
 
-        if (! $this->isCompatible($configuration) || ! $this->manifestIsTrusted($configuration)) {
+        if (! $this->isCompatible($configuration) || ! $this->manifestIsTrusted($configuration) || ! $this->isAllowedPackageUrl($package)) {
             return null;
         }
 
@@ -329,10 +329,24 @@ final class WordPressUpdateAdapter
         if (! $this->manifestIsTrusted($configuration)) {
             return 'untrusted_manifest';
         }
+        if (! $this->isAllowedPackageUrl((string) ($configuration['package_url'] ?? ''))) {
+            return 'disallowed_package_host';
+        }
         if ($latest !== '' && $installed !== '' && version_compare($latest, $installed, '<=')) {
             return 'up_to_date';
         }
 
         return null;
+    }
+
+    private function isAllowedPackageUrl(string $package): bool
+    {
+        $packageUrl = parse_url($package);
+        $apiUrl = parse_url($this->config->apiUrl);
+
+        return is_array($packageUrl)
+            && is_array($apiUrl)
+            && ($packageUrl['scheme'] ?? null) === 'https'
+            && strtolower((string) ($packageUrl['host'] ?? '')) === strtolower((string) ($apiUrl['host'] ?? ''));
     }
 }

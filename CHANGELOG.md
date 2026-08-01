@@ -11,6 +11,9 @@
 - PHP, WordPress and minimum SDK compatibility checks;
 - update result reporting back to the License Server;
 - idempotent server configuration commands (excluding `force_update`).
+- stable, beta and alpha release channels with deterministic rollout selection;
+- package URL host allowlisting and server-side eligibility checks;
+- server rollback support that stops distribution of a withdrawn release.
 
 ## [0.3.0] - 2026-08-02
 
