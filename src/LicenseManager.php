@@ -4,9 +4,10 @@ namespace Zion\WordPressLicense;
 
 final class LicenseManager
 {
-    public const VERSION = '0.1.11';
+    public const VERSION = '0.1.12';
 
     private ?LicensePrompt $prompt = null;
+    private ?WordPressUpdateAdapter $updates = null;
 
     public function __construct(private readonly Config $config, private readonly WordPressHttpClient $http = new WordPressHttpClient)
     {
@@ -18,7 +19,8 @@ final class LicenseManager
 
         $this->prompt = new LicensePrompt($config, $this);
         $this->prompt->register();
-        (new WordPressUpdateAdapter($config, $this))->register();
+        $this->updates = new WordPressUpdateAdapter($config, $this);
+        $this->updates->register();
         (new ServerCommandEndpoint($config, $this))->register();
         add_action('init', [$this, 'scheduleHeartbeat']);
         add_action('admin_init', [$this, 'maybeRefreshFromAdmin']);
@@ -181,6 +183,35 @@ final class LicenseManager
     public function installedVersion(): string
     {
         return (string) ($this->header('Version') ?? '');
+    }
+
+    /**
+     * Refreshes the server state and returns the update decision for this
+     * installation. An update is available only when the server version is
+     * strictly greater than the installed plugin version.
+     *
+     * @return array{available: bool, installed_version: string, latest_version: string, package_url: string, details_url: string}
+     */
+    public function updateStatus(bool $refresh = true): array
+    {
+        return $this->updates?->status($refresh) ?? [
+            'available' => false,
+            'installed_version' => $this->installedVersion(),
+            'latest_version' => '',
+            'package_url' => '',
+            'details_url' => rtrim($this->config->apiUrl, '/'),
+        ];
+    }
+
+    /**
+     * Starts and executes the private WordPress update when a newer server
+     * version is available. Returns false when no update is needed or the
+     * current request cannot perform updates; otherwise returns WordPress's
+     * upgrader result (or WP_Error).
+     */
+    public function updateIfAvailable(): mixed
+    {
+        return $this->updates?->updateIfAvailable() ?? false;
     }
 
     /** @return array<string, mixed> */

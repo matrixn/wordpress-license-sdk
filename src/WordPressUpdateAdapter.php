@@ -47,6 +47,80 @@ final class WordPressUpdateAdapter
         return $transient;
     }
 
+    /**
+     * @return array{available: bool, installed_version: string, latest_version: string, package_url: string, details_url: string}
+     */
+    public function status(bool $refresh = true): array
+    {
+        if ($refresh && function_exists('get_option')) {
+            $licenseKey = get_option($this->config->licenseOption(), '');
+            if (is_string($licenseKey) && $licenseKey !== '') {
+                try {
+                    $this->manager->ping($licenseKey);
+                } catch (\Throwable) {
+                    // Keep the locally cached update state during outages.
+                }
+            }
+        }
+
+        $configuration = $this->manager->runtimeConfiguration();
+        $installed = $this->manager->installedVersion();
+        $latest = (string) ($configuration['latest_version'] ?? '');
+        $package = (string) ($configuration['package_url'] ?? '');
+
+        return [
+            'available' => $package !== ''
+                && $installed !== ''
+                && $latest !== ''
+                && version_compare($latest, $installed, '>'),
+            'installed_version' => $installed,
+            'latest_version' => $latest,
+            'package_url' => $package,
+            'details_url' => (string) ($configuration['details_url'] ?? rtrim($this->config->apiUrl, '/')),
+        ];
+    }
+
+    /**
+     * Runs WordPress's native upgrader with the signed package URL supplied by
+     * the licensing server. The SDK never downloads a release directly when
+     * the server version is equal to or lower than the installed version.
+     */
+    public function updateIfAvailable(): mixed
+    {
+        if (! function_exists('current_user_can') || ! current_user_can('update_plugins')) {
+            return false;
+        }
+
+        $status = $this->status(true);
+        if (! $status['available']) {
+            return false;
+        }
+
+        if (! class_exists('Plugin_Upgrader')) {
+            require_once ABSPATH.'wp-admin/includes/class-wp-upgrader.php';
+        }
+
+        if (! class_exists('Automatic_Upgrader_Skin')) {
+            require_once ABSPATH.'wp-admin/includes/class-wp-upgrader-skin.php';
+        }
+
+        $skin = new \Automatic_Upgrader_Skin();
+        $upgrader = new \Plugin_Upgrader($skin);
+        $result = $upgrader->upgrade(
+            plugin_basename($this->config->pluginFile),
+            [
+                'package' => $status['package_url'],
+                'clear_destination' => true,
+            ],
+        );
+
+        if ($result !== false && ! is_wp_error($result) && function_exists('wp_clean_plugins_cache')) {
+            wp_clean_plugins_cache(true);
+        }
+
+        return $result;
+    }
+
     public function pluginInformation(mixed $result, string $action, mixed $args): mixed
     {
         if ($action !== 'plugin_information' || ! is_object($args) || ($args->slug ?? null) !== $this->config->productSlug) {

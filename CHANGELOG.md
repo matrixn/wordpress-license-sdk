@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.12] - 2026-08-01
+
+- Added `LicenseManager::updateStatus()` to compare the installed plugin version
+  with the version published by Zion.
+- Added `LicenseManager::updateIfAvailable()` to execute a private update through
+  WordPress `Plugin_Upgrader` only when the server version is newer.
+- Kept capability checks, temporary package URLs, and safe no-update behavior.
+
 ## [0.1.11] - 2026-08-01
 
 - Repară refresh-ul paginii de status și afișarea datei de expirare.
