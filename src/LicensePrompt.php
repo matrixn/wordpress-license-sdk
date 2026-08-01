@@ -58,11 +58,22 @@ final class LicensePrompt
         }
 
         $action = isset($_POST['zion_license_action']) ? sanitize_key(wp_unslash($_POST['zion_license_action'])) : '';
-        if (! in_array($action, ['save', 'refresh_status'], true) || ($this->config->productSlug !== sanitize_key(wp_unslash($_POST['zion_license_product'] ?? '')))) {
+        if (! in_array($action, ['save', 'refresh_status', 'deactivate'], true) || ($this->config->productSlug !== sanitize_key(wp_unslash($_POST['zion_license_product'] ?? '')))) {
             return;
         }
 
         check_admin_referer($this->nonceAction());
+
+        if ($action === 'deactivate') {
+            try {
+                $this->manager->deactivate();
+                $this->flash('success', $this->t('Licența a fost dezactivată și activarea a fost eliberată.'));
+            } catch (\Throwable) {
+                $this->flash('error', $this->t('Licența nu a putut fi dezactivată acum.'));
+            }
+
+            $this->redirect(wp_get_referer() ?: admin_url('plugins.php'));
+        }
 
         if ($action === 'refresh_status') {
             try {
@@ -358,7 +369,7 @@ final class LicensePrompt
                             $isCurrent = $installed !== '' && version_compare($match[1], $installed, '=');
                             $isNew = $installed !== '' && version_compare($match[1], $installed, '>'); ?><p class="zion-license-changelog__version"><?php echo esc_html($line); ?><?php if ($isCurrent) { ?><span class="zion-license-changelog__badge zion-license-changelog__badge--current"><?php echo esc_html($this->t('current version')); ?></span><?php } elseif ($isNew) { ?><span class="zion-license-changelog__badge zion-license-changelog__badge--new"><?php echo esc_html($this->t('new version')); ?></span><?php } ?></p><?php } else { ?><div><?php echo esc_html($line); ?></div><?php }
                             } ?></div><?php } else { ?><p><?php echo esc_html($this->t('Nu există încă un changelog importat pentru acest release.')); ?></p><?php } ?>
-                <div class="zion-license-status-actions"><?php if ($updateAvailable && ! empty($status['package_url'])) { ?><a class="button" href="<?php echo esc_url($this->adminPostUrl('zion_license_manual_update')); ?>"><?php echo esc_html($this->t('Actualizează acum')); ?></a><?php } ?><form method="post"><?php wp_nonce_field($this->nonceAction()); ?><input type="hidden" name="zion_license_action" value="refresh_status"><input type="hidden" name="zion_license_product" value="<?php echo esc_attr($this->config->productSlug); ?>"><button type="submit" class="button button-primary"><?php echo esc_html($this->t('Reîmprospătează datele')); ?></button></form><button type="button" class="button" data-zion-license-status-close><?php echo esc_html($this->t('Închide')); ?></button></div>
+                <div class="zion-license-status-actions"><?php if ($updateAvailable && ! empty($status['package_url'])) { ?><a class="button" href="<?php echo esc_url($this->adminPostUrl('zion_license_manual_update')); ?>"><?php echo esc_html($this->t('Actualizează acum')); ?></a><?php } ?><form method="post"><?php wp_nonce_field($this->nonceAction()); ?><input type="hidden" name="zion_license_action" value="refresh_status"><input type="hidden" name="zion_license_product" value="<?php echo esc_attr($this->config->productSlug); ?>"><button type="submit" class="button button-primary"><?php echo esc_html($this->t('Reîmprospătează datele')); ?></button></form><form method="post" onsubmit="return confirm('<?php echo esc_js($this->t('Ești sigur că vrei să dezactivezi licența pentru acest site?')); ?>');"><?php wp_nonce_field($this->nonceAction()); ?><input type="hidden" name="zion_license_action" value="deactivate"><input type="hidden" name="zion_license_product" value="<?php echo esc_attr($this->config->productSlug); ?>"><button type="submit" class="button"><?php echo esc_html($this->t('Dezactivează licența')); ?></button></form><button type="button" class="button" data-zion-license-status-close><?php echo esc_html($this->t('Închide')); ?></button></div>
             </div>
         </div>
         <script>

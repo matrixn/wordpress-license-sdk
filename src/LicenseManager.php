@@ -452,6 +452,9 @@ final class LicenseManager
         update_option($this->licenseStateOption(), sanitize_key((string) ($data['license_state'] ?? 'unknown')), false);
         update_option($this->lastPingOption(), current_time('mysql'), false);
         update_option($this->detailsOption(), $data, false);
+        if (function_exists('do_action')) {
+            do_action('zion_license_activated', $data);
+        }
 
         return $data;
     }
@@ -501,6 +504,9 @@ final class LicenseManager
         ]);
         $data = is_array($response['data'] ?? null) ? $response['data'] : $response;
         $this->clearLocalLicenseState();
+        if (function_exists('do_action')) {
+            do_action('zion_license_deactivated', $data);
+        }
 
         return $data;
     }
