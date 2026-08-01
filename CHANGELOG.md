@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.0] - 2026-08-01
+
+- Added Free, Pro, Business and Agency plan information from the server.
+- Added `LicenseManager::plan()`, `entitlements()`, `featureGate()` and
+  `allows()` helpers for premium feature gates.
+- Exposed plan and entitlements in `LicenseManager::status()`.
+- Kept entitlements fail-closed when the server does not provide a capability.
+
 ## [0.1.19] - 2026-08-01
 
 - Injected private plugin updates when WordPress reads an existing update transient.

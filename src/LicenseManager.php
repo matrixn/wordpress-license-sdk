@@ -4,7 +4,7 @@ namespace Zion\WordPressLicense;
 
 final class LicenseManager
 {
-    public const VERSION = '0.1.19';
+    public const VERSION = '0.2.0';
 
     private ?LicensePrompt $prompt = null;
 
@@ -117,6 +117,8 @@ final class LicenseManager
             }
         }
         $response['license_state'] = get_option($this->licenseStateOption(), 'unknown');
+        $response['plan'] = $this->plan();
+        $response['entitlements'] = $this->entitlements();
         $response['license_key_present'] = (bool) get_option($this->config->licenseOption(), '');
         $response['callback'] = $this->callbackStatus();
         $response['last_ping_at'] = get_option($this->lastPingOption(), null);
@@ -135,6 +137,35 @@ final class LicenseManager
         }
 
         return $response;
+    }
+
+    public function plan(): string
+    {
+        $plan = (string) ($this->runtimeConfiguration()['plan'] ?? 'free');
+
+        return in_array($plan, ['free', 'pro', 'business', 'agency'], true) ? $plan : 'free';
+    }
+
+    /** @return array<string, bool> */
+    public function entitlements(): array
+    {
+        $entitlements = $this->runtimeConfiguration()['entitlements'] ?? [];
+
+        if (! is_array($entitlements)) {
+            return [];
+        }
+
+        return array_filter($entitlements, static fn (mixed $enabled): bool => $enabled === true);
+    }
+
+    public function featureGate(): FeatureGate
+    {
+        return new FeatureGate($this->entitlements());
+    }
+
+    public function allows(string $feature): bool
+    {
+        return $this->featureGate()->allows($feature);
     }
 
     /** Refreshes license and update data only when the server-defined interval elapsed. */

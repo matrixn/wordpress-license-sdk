@@ -9,6 +9,12 @@ final class FeatureGate
 
     public function allows(string $feature): bool
     {
-        return $this->entitlements[$feature] ?? false;
+        return ($this->entitlements[$feature] ?? false) === true;
+    }
+
+    /** @return array<string, bool> */
+    public function all(): array
+    {
+        return $this->entitlements;
     }
 }
