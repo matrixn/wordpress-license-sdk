@@ -66,7 +66,7 @@ final class WordPressUpdateAdapter
 
         $configuration = $this->manager->runtimeConfiguration();
         $state = (string) ($this->manager->status()['license_state'] ?? 'unknown');
-        if (! in_array($state, ['active', 'free'], true) || empty($configuration['auto_update_allowed'])) {
+        if (! in_array($state, ['active', 'grace_period', 'free'], true) || empty($configuration['auto_update_allowed'])) {
             return false;
         }
 
