@@ -4,7 +4,7 @@ namespace Zion\WordPressLicense;
 
 final class LicenseManager
 {
-    public const VERSION = '0.1.13';
+    public const VERSION = '0.1.14';
 
     private ?LicensePrompt $prompt = null;
     private ?WordPressUpdateAdapter $updates = null;

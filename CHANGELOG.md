@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.14] - 2026-08-01
+
+- Fixed plugin activation fatal error caused by the missing status modal ID helper.
+
 ## [0.1.13] - 2026-08-01
 
 - Fixed WordPress update detection when the cached `update_available` flag is stale.

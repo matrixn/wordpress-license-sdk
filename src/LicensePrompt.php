@@ -245,6 +245,7 @@ final class LicensePrompt
     private function pluginBasename(): string { return function_exists('plugin_basename') ? plugin_basename($this->config->pluginFile) : basename($this->config->pluginFile); }
     private function statusPageSlug(): string { return 'zion-license-status-' . sanitize_key($this->config->productSlug); }
     private function statusPageUrl(): string { return admin_url('admin.php?page=' . $this->statusPageSlug()); }
+    private function statusModalId(): string { return 'zion-license-status-' . md5($this->config->productSlug); }
 
     private function flash(string $type, string $message): void { set_transient($this->flashOption(), ['type' => $type, 'message' => $message], MINUTE_IN_SECONDS); }
 
