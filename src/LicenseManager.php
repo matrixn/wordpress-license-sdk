@@ -4,7 +4,7 @@ namespace Zion\WordPressLicense;
 
 final class LicenseManager
 {
-    public const VERSION = '0.1.12';
+    public const VERSION = '0.1.13';
 
     private ?LicensePrompt $prompt = null;
     private ?WordPressUpdateAdapter $updates = null;
@@ -121,7 +121,45 @@ final class LicenseManager
         $response['last_ping_at'] = get_option($this->lastPingOption(), null);
         $response['installed_version'] = $this->installedVersion();
 
+        if ($this->updates !== null) {
+            $update = $this->updates->status(false);
+            $response['update_available'] = $update['available'];
+            $response['latest_version'] = $update['latest_version'];
+            $response['package_url'] = $update['package_url'];
+            $response['changelog'] = $update['changelog'];
+            $response['auto_update_allowed'] = $update['auto_update_allowed'];
+            $response['auto_update_enabled'] = $update['auto_update_enabled'];
+            $response['sdk_version'] = $update['sdk_version'];
+            $response['last_update_at'] = $update['last_update_at'];
+        }
+
         return $response;
+    }
+
+    /** Refreshes license and update data only when the server-defined interval elapsed. */
+    public function refreshIfDue(): array
+    {
+        if (! function_exists('get_option')) {
+            return $this->runtimeConfiguration();
+        }
+
+        $licenseKey = get_option($this->config->licenseOption(), '');
+        if (! is_string($licenseKey) || $licenseKey === '') {
+            return $this->runtimeConfiguration();
+        }
+
+        $last = get_option($this->lastPingOption(), null);
+        $interval = $this->pingIntervalHours() * HOUR_IN_SECONDS;
+        $lastTimestamp = is_string($last) ? strtotime($last) : false;
+        if ($lastTimestamp !== false && $lastTimestamp > time() - $interval) {
+            return $this->runtimeConfiguration();
+        }
+
+        try {
+            return $this->ping($licenseKey);
+        } catch (\Throwable) {
+            return $this->runtimeConfiguration();
+        }
     }
 
     /** @return array<string, mixed> */
@@ -209,9 +247,9 @@ final class LicenseManager
      * current request cannot perform updates; otherwise returns WordPress's
      * upgrader result (or WP_Error).
      */
-    public function updateIfAvailable(): mixed
+    public function updateIfAvailable(bool $internal = false): mixed
     {
-        return $this->updates?->updateIfAvailable() ?? false;
+        return $this->updates?->updateIfAvailable($internal) ?? false;
     }
 
     /** @return array<string, mixed> */

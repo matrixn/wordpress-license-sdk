@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.13] - 2026-08-01
+
+- Fixed WordPress update detection when the cached `update_available` flag is stale.
+- Added server-interval refreshes on the Plugins screen and native auto-update permission handling.
+- Added direct update execution, update metadata, last-update tracking, and a status/changelog modal.
+
 ## [0.1.12] - 2026-08-01
 
 - Added `LicenseManager::updateStatus()` to compare the installed plugin version

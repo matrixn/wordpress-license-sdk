@@ -17,6 +17,8 @@ final class WordPressUpdateAdapter
 
         add_filter('pre_set_site_transient_update_plugins', [$this, 'injectUpdate']);
         add_filter('plugins_api', [$this, 'pluginInformation'], 20, 3);
+        add_filter('auto_update_plugin', [$this, 'filterAutoUpdate'], 10, 2);
+        add_action('load-plugins.php', [$this, 'refreshPluginScreen']);
     }
 
     public function injectUpdate(mixed $transient): mixed
@@ -27,13 +29,7 @@ final class WordPressUpdateAdapter
 
         $plugin = plugin_basename($this->config->pluginFile);
         $installed = (string) ($transient->checked[$plugin] ?? $this->manager->installedVersion());
-        if ($this->manager->runtimeConfiguration() === [] && get_option($this->config->licenseOption(), '')) {
-            try {
-                $this->manager->ping((string) get_option($this->config->licenseOption()));
-            } catch (\Throwable) {
-                // Keep WordPress updates stable when the licensing server is temporarily unavailable.
-            }
-        }
+        $this->manager->refreshIfDue();
         $update = $this->availableUpdate($installed);
 
         if ($update === null) {
@@ -45,6 +41,31 @@ final class WordPressUpdateAdapter
         $transient->response[$plugin] = $update;
 
         return $transient;
+    }
+
+    public function refreshPluginScreen(): void
+    {
+        if (! function_exists('wp_update_plugins') || ! function_exists('current_user_can') || ! current_user_can('update_plugins')) {
+            return;
+        }
+
+        $this->manager->refreshIfDue();
+        wp_update_plugins();
+    }
+
+    public function filterAutoUpdate(bool|null $update, object $item): bool|null
+    {
+        if (($item->plugin ?? null) !== plugin_basename($this->config->pluginFile)) {
+            return $update;
+        }
+
+        $configuration = $this->manager->runtimeConfiguration();
+        $state = (string) ($this->manager->status()['license_state'] ?? 'unknown');
+        if (! in_array($state, ['active', 'free'], true) || empty($configuration['auto_update_allowed'])) {
+            return false;
+        }
+
+        return $update;
     }
 
     /**
@@ -77,6 +98,11 @@ final class WordPressUpdateAdapter
             'latest_version' => $latest,
             'package_url' => $package,
             'details_url' => (string) ($configuration['details_url'] ?? rtrim($this->config->apiUrl, '/')),
+            'changelog' => (string) ($configuration['changelog'] ?? ''),
+            'auto_update_allowed' => (bool) ($configuration['auto_update_allowed'] ?? false),
+            'auto_update_enabled' => $this->isAutoUpdateEnabled(),
+            'sdk_version' => \Zion\WordPressLicense\LicenseManager::VERSION,
+            'last_update_at' => function_exists('get_option') ? get_option($this->lastUpdateOption(), null) : null,
         ];
     }
 
@@ -85,13 +111,13 @@ final class WordPressUpdateAdapter
      * the licensing server. The SDK never downloads a release directly when
      * the server version is equal to or lower than the installed version.
      */
-    public function updateIfAvailable(): mixed
+    public function updateIfAvailable(bool $internal = false): mixed
     {
-        if (! function_exists('current_user_can') || ! current_user_can('update_plugins')) {
+        if (! $internal && (! function_exists('current_user_can') || ! current_user_can('update_plugins'))) {
             return false;
         }
 
-        $status = $this->status(true);
+        $status = $this->status(! $internal);
         if (! $status['available']) {
             return false;
         }
@@ -116,6 +142,7 @@ final class WordPressUpdateAdapter
 
         if ($result !== false && ! is_wp_error($result) && function_exists('wp_clean_plugins_cache')) {
             wp_clean_plugins_cache(true);
+            update_option($this->lastUpdateOption(), current_time('mysql'), false);
         }
 
         return $result;
@@ -154,7 +181,8 @@ final class WordPressUpdateAdapter
     {
         $configuration = $this->manager->runtimeConfiguration();
         $latest = (string) ($configuration['latest_version'] ?? '');
-        $available = (bool) ($configuration['update_available'] ?? false);
+        $available = (bool) ($configuration['update_available'] ?? false)
+            || ($latest !== '' && $installed !== '' && version_compare($latest, $installed, '>'));
         $package = (string) ($configuration['package_url'] ?? '');
 
         if (! $available || $latest === '' || $package === '' || $installed === '' || version_compare($latest, $installed, '<=')) {
@@ -170,8 +198,27 @@ final class WordPressUpdateAdapter
             'package' => $package,
             'requires' => (string) ($configuration['requires_wordpress'] ?? ''),
             'requires_php' => (string) ($configuration['requires_php'] ?? ''),
+            'sections' => ['changelog' => (string) ($configuration['changelog'] ?? '')],
             'icons' => [],
             'banners' => [],
         ];
+    }
+
+    private function isAutoUpdateEnabled(): bool
+    {
+        if (! function_exists('get_site_option')) {
+            return false;
+        }
+
+        return in_array(
+            plugin_basename($this->config->pluginFile),
+            (array) get_site_option('auto_update_plugins', []),
+            true,
+        );
+    }
+
+    private function lastUpdateOption(): string
+    {
+        return 'zion_license_last_update_'.md5($this->config->productSlug);
     }
 }
