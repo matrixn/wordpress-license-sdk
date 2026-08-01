@@ -16,6 +16,7 @@ final class WordPressUpdateAdapter
         }
 
         add_filter('pre_set_site_transient_update_plugins', [$this, 'injectUpdate']);
+        add_filter('site_transient_update_plugins', [$this, 'injectUpdate'], 20);
         add_filter('plugins_api', [$this, 'pluginInformation'], 20, 3);
         add_filter('auto_update_plugin', [$this, 'filterAutoUpdate'], 10, 2);
         add_action('load-plugins.php', [$this, 'refreshPluginScreen']);
@@ -29,6 +30,9 @@ final class WordPressUpdateAdapter
 
         $plugin = plugin_basename($this->config->pluginFile);
         $installed = (string) ($transient->checked[$plugin] ?? $this->manager->installedVersion());
+        if (! isset($transient->response) || ! is_array($transient->response)) {
+            $transient->response = [];
+        }
         $this->manager->refreshIfDue();
         $update = $this->availableUpdate($installed);
 
@@ -88,9 +92,13 @@ final class WordPressUpdateAdapter
         $installed = $this->manager->installedVersion();
         $latest = (string) ($configuration['latest_version'] ?? '');
         $package = (string) ($configuration['package_url'] ?? '');
+        $available = array_key_exists('update_available', $configuration)
+            ? (bool) $configuration['update_available']
+            : ($latest !== '' && $installed !== '' && version_compare($latest, $installed, '>'));
 
         return [
-            'available' => $package !== ''
+            'available' => $available
+                && $package !== ''
                 && $installed !== ''
                 && $latest !== ''
                 && version_compare($latest, $installed, '>'),
@@ -181,12 +189,12 @@ final class WordPressUpdateAdapter
     {
         $configuration = $this->manager->runtimeConfiguration();
         $latest = (string) ($configuration['latest_version'] ?? '');
-        $allowed = (bool) ($configuration['auto_update_allowed'] ?? false);
-        $available = (bool) ($configuration['update_available'] ?? false)
-            || ($latest !== '' && $installed !== '' && version_compare($latest, $installed, '>'));
+        $available = array_key_exists('update_available', $configuration)
+            ? (bool) $configuration['update_available']
+            : ($latest !== '' && $installed !== '' && version_compare($latest, $installed, '>'));
         $package = (string) ($configuration['package_url'] ?? '');
 
-        if (! $allowed || ! $available || $latest === '' || $package === '' || $installed === '' || version_compare($latest, $installed, '<=')) {
+        if (! $available || $latest === '' || $package === '' || $installed === '' || version_compare($latest, $installed, '<=')) {
             return null;
         }
 

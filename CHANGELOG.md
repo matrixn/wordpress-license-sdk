@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.19] - 2026-08-01
+
+- Injected private plugin updates when WordPress reads an existing update transient.
+- Kept the server's explicit `update_available` decision authoritative, including paused updates.
+
 ## [0.1.18] - 2026-08-01
 
 - Added the last four characters of the activated license to the read-only status modal.
