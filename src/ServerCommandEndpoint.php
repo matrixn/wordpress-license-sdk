@@ -90,6 +90,7 @@ final class ServerCommandEndpoint
 
         return [
             'received' => true,
+            'protocol_version' => Protocol::VERSION,
             'sdk_version' => LicenseManager::VERSION,
             'plugin_version' => $this->manager->installedVersion(),
             'update_available' => (bool) ($configuration['update_available'] ?? false),
@@ -102,7 +103,7 @@ final class ServerCommandEndpoint
     private function sanitizeConfiguration(array $configuration): ?array
     {
         $result = [];
-        foreach (['ping_interval_hours', 'latest_version', 'server_version', 'sdk_latest_version', 'details_url', 'package_url', 'package_expires_at', 'changelog'] as $key) {
+        foreach (['protocol_version', 'minimum_sdk_version', 'recommended_sdk_version', 'latest_version', 'server_version', 'sdk_latest_version', 'details_url', 'package_url', 'package_expires_at', 'changelog'] as $key) {
             if (array_key_exists($key, $configuration) && ! is_scalar($configuration[$key]) && $configuration[$key] !== null) {
                 return null;
             }

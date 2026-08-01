@@ -123,6 +123,7 @@ final class LicenseManager
         $response['callback'] = $this->callbackStatus();
         $response['last_ping_at'] = get_option($this->lastPingOption(), null);
         $response['installed_version'] = $this->installedVersion();
+        $response['protocol'] = $this->protocolStatus();
 
         if ($this->updates !== null) {
             $update = $this->updates->status(false);
@@ -137,6 +138,21 @@ final class LicenseManager
         }
 
         return $response;
+    }
+
+    /** @return array{version: string, minimum_sdk_version: string, recommended_sdk_version: string, deprecated: bool} */
+    public function protocolStatus(): array
+    {
+        $configuration = $this->runtimeConfiguration();
+        $minimum = (string) ($configuration['minimum_sdk_version'] ?? Protocol::MINIMUM_SDK_VERSION);
+        $recommended = (string) ($configuration['recommended_sdk_version'] ?? self::VERSION);
+
+        return [
+            'version' => (string) ($configuration['protocol_version'] ?? Protocol::VERSION),
+            'minimum_sdk_version' => $minimum,
+            'recommended_sdk_version' => $recommended,
+            'deprecated' => version_compare(self::VERSION, $minimum, '<'),
+        ];
     }
 
     public function plan(): string

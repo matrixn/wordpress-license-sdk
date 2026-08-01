@@ -2,6 +2,8 @@
 
 namespace Zion\WordPressLicense;
 
+use Zion\WordPressLicense\Exceptions\ApiException;
+use Zion\WordPressLicense\Exceptions\ServerUnavailableException;
 use RuntimeException;
 
 final class WordPressHttpClient
@@ -15,6 +17,7 @@ final class WordPressHttpClient
                 'Accept' => 'application/json',
                 'Content-Type' => 'application/json; charset=utf-8',
                 'X-Request-Id' => $requestId,
+                Protocol::HEADER => Protocol::VERSION,
             ], $headers);
             $encodedPayload = wp_json_encode($payload);
             if (! is_string($encodedPayload)) {
@@ -36,7 +39,7 @@ final class WordPressHttpClient
                         continue;
                     }
 
-                    throw new RuntimeException('The license server could not be reached.');
+                    throw new ServerUnavailableException('The license server could not be reached.', $requestId);
                 }
 
                 $statusCode = (int) wp_remote_retrieve_response_code($response);
@@ -50,8 +53,17 @@ final class WordPressHttpClient
                 if ($statusCode >= 400 || ! is_array($body)) {
                     $responseId = (string) wp_remote_retrieve_header($response, 'x-request-id');
                     $reference = $responseId !== '' ? " Request ID: {$responseId}." : '';
+                    $error = is_array($body['error'] ?? null) ? $body['error'] : [];
+                    $errorCode = is_string($error['code'] ?? null) ? $error['code'] : 'api_error';
+                    $errorMessage = is_string($error['message'] ?? null) ? $error['message'] : "License server rejected the request (HTTP {$statusCode}).";
 
-                    throw new RuntimeException("License server rejected the request (HTTP {$statusCode}).{$reference}");
+                    throw new ApiException(
+                        $errorMessage.$reference,
+                        $errorCode,
+                        $statusCode,
+                        $responseId !== '' ? $responseId : $requestId,
+                        is_array($error['details'] ?? null) ? $error['details'] : [],
+                    );
                 }
 
                 return $body;
