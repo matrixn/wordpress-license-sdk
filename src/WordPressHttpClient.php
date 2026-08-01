@@ -4,9 +4,9 @@ namespace Zion\WordPressLicense;
 
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
+use RuntimeException;
 use Zion\WordPressLicense\Exceptions\ApiException;
 use Zion\WordPressLicense\Exceptions\ServerUnavailableException;
-use RuntimeException;
 
 final class WordPressHttpClient
 {

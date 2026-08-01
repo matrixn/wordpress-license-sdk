@@ -2,8 +2,8 @@
 
 namespace Zion\WordPressLicense;
 
-use Zion\WordPressLicense\Exceptions\ApiException;
 use RuntimeException;
+use Zion\WordPressLicense\Exceptions\ApiException;
 
 /**
  * Shared WordPress administration flow for entering and validating a product license.

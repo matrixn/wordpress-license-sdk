@@ -224,6 +224,7 @@ final class LicenseManager
             return $this->ping($licenseKey);
         } catch (\Throwable $exception) {
             $this->markOfflineFailure($exception);
+
             return $this->runtimeConfiguration();
         }
     }
@@ -243,6 +244,7 @@ final class LicenseManager
                 return $this->ping($this->licenseKey());
             } catch (\Throwable $exception) {
                 $this->markOfflineFailure($exception);
+
                 return $configuration;
             }
         }
