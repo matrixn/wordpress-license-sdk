@@ -26,6 +26,7 @@ final class LicensePrompt
         add_action('admin_post_zion_license_toggle_auto_update', [$this, 'toggleAutoUpdate']);
         add_action('admin_post_zion_license_manual_update', [$this, 'manualUpdate']);
         add_filter('plugin_action_links_'.$this->pluginBasename(), [$this, 'pluginActionLinks']);
+        add_filter('plugin_auto_update_setting_html', [$this, 'autoUpdateSettingHtml'], 10, 4);
     }
 
     public function markActivated(): void
@@ -146,6 +147,32 @@ final class LicensePrompt
         }
 
         return $links;
+    }
+
+    /**
+     * Keep the native WordPress auto-update column useful for private plugins.
+     * Core normally hides this control when no WordPress.org update endpoint
+     * exists, so the SDK supplies the same control using the signed Zion gate.
+     */
+    public function autoUpdateSettingHtml(string $html, string $pluginFile, mixed $plugin = null, mixed $autoUpdates = ''): string
+    {
+        if ($pluginFile !== $this->pluginBasename()) {
+            return $html;
+        }
+
+        $status = $this->manager->status();
+        if (empty($status['auto_update_allowed'])) {
+            return $html;
+        }
+
+        $enabled = in_array($pluginFile, (array) get_site_option('auto_update_plugins', []), true);
+        $label = $enabled ? $this->t('Dezactivează auto-update') : $this->t('Activează auto-update');
+
+        return sprintf(
+            '<a href="%1$s" class="update-link zion-auto-update-link">%2$s</a>',
+            esc_url($this->adminPostUrl('zion_license_toggle_auto_update')),
+            esc_html($label),
+        );
     }
 
     public function toggleAutoUpdate(): void

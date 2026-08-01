@@ -1,8 +1,14 @@
 # Changelog
 
+## [0.1.16] - 2026-08-01
+
+- Added the native WordPress Automatic Updates column control for private plugins.
+- Kept the explicit plugin action link as a fallback on WordPress versions that hide the column.
+
 ## [0.1.15] - 2026-08-01
 
 - Added explicit Enable/Disable auto-update and Update now actions beside the plugin.
+- Added the same control to WordPress' native Automatic Updates column for private plugins.
 - Added a force-refresh action that pings the license server and clears WordPress update caches.
 - The license status modal now shows the last server communication and includes a refresh button.
 - Improved error handling for manual updates and server permission checks.
