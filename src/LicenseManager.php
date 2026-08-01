@@ -4,7 +4,7 @@ namespace Zion\WordPressLicense;
 
 final class LicenseManager
 {
-    public const VERSION = '0.1.14';
+    public const VERSION = '0.1.15';
 
     private ?LicensePrompt $prompt = null;
     private ?WordPressUpdateAdapter $updates = null;
@@ -250,6 +250,52 @@ final class LicenseManager
     public function updateIfAvailable(bool $internal = false): mixed
     {
         return $this->updates?->updateIfAvailable($internal) ?? false;
+    }
+
+    /**
+     * Remove WordPress' cached plugin update metadata without discarding the
+     * signed Zion runtime configuration (which contains the package URL).
+     */
+    public function clearUpdateCache(): void
+    {
+        if (function_exists('delete_site_transient')) {
+            delete_site_transient('update_plugins');
+        }
+
+        if (function_exists('delete_transient')) {
+            delete_transient('update_plugins');
+        }
+
+        if (function_exists('wp_clean_plugins_cache')) {
+            wp_clean_plugins_cache(true);
+        }
+    }
+
+    /**
+     * Force a fresh license ping, then invalidate WordPress update caches and
+     * ask WordPress to rebuild its plugin update transient.
+     *
+     * @return array<string, mixed>
+     */
+    public function forceRefresh(): array
+    {
+        if (! function_exists('get_option')) {
+            return $this->runtimeConfiguration();
+        }
+
+        $licenseKey = get_option($this->config->licenseOption(), '');
+        if (! is_string($licenseKey) || $licenseKey === '') {
+            throw new \RuntimeException('No license key is configured.');
+        }
+
+        $response = $this->ping($licenseKey);
+        $this->clearUpdateCache();
+
+        if (function_exists('wp_update_plugins')) {
+            wp_update_plugins();
+        }
+
+        return $response;
     }
 
     /** @return array<string, mixed> */

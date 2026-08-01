@@ -7,7 +7,7 @@ Documentația completă de integrare se află în [docs/wordpress-integration.md
 ## Instalare
 
 ```bash
-composer require zion/wordpress-license-sdk:^0.1.14
+composer require zion/wordpress-license-sdk:^0.1.15
 ```
 
 În arhiva finală a pluginului trebuie inclus și directorul `vendor/`. SDK-ul
@@ -15,7 +15,7 @@ folosește `productSlug` și `productKey` ca identificatori publici ai produsulu
 cheia de licență, tokenul de activare și URL-urile temporare de update sunt
 gestionate de serverul Zion.
 
-Versiunea curentă: **0.1.14**.
+Versiunea curentă: **0.1.15**.
 
 ## Ce oferă SDK-ul
 
@@ -23,7 +23,10 @@ Versiunea curentă: **0.1.14**.
 - callback REST securizat pentru comenzi de la server;
 - ecran de activare și pagină de status în WordPress;
 - link `Status licență` lângă acțiunile pluginului din pagina Plugins;
-- verificarea conexiunii și reîmprospătarea datelor licenței;
+- linkuri pentru `Activează auto-update`, `Dezactivează auto-update` și
+  `Actualizează acum`, afișate numai când serverul permite acțiunea;
+- verificarea conexiunii și reîmprospătarea datelor licenței, inclusiv golirea
+  cache-ului WordPress pentru update-uri;
 - integrare cu actualizările native WordPress;
 - verificare strictă a versiunii serverului și executarea update-ului privat prin
   `LicenseManager::updateIfAvailable()`;
@@ -53,3 +56,6 @@ if (current_user_can('update_plugins')) {
 
 `updateIfAvailable()` folosește `Plugin_Upgrader` și nu descarcă nimic când nu
 există o versiune mai nouă sau utilizatorul nu are capabilitatea necesară.
+
+În modalul `Status licență`, butonul `Reîmprospătează datele` face un ping
+imediat, actualizează `last_ping_at` și reconstruiește metadatele de update.
