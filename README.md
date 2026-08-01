@@ -7,7 +7,7 @@ Documentația completă de integrare se află în [docs/wordpress-integration.md
 ## Instalare
 
 ```bash
-composer require zion/wordpress-license-sdk:^0.1.16
+composer require zion/wordpress-license-sdk:^0.1.17
 ```
 
 În arhiva finală a pluginului trebuie inclus și directorul `vendor/`. SDK-ul
@@ -15,7 +15,7 @@ folosește `productSlug` și `productKey` ca identificatori publici ai produsulu
 cheia de licență, tokenul de activare și URL-urile temporare de update sunt
 gestionate de serverul Zion.
 
-Versiunea curentă: **0.1.16**.
+Versiunea curentă: **0.1.17**.
 
 ## Ce oferă SDK-ul
 
@@ -59,3 +59,4 @@ există o versiune mai nouă sau utilizatorul nu are capabilitatea necesară.
 
 În modalul `Status licență`, butonul `Reîmprospătează datele` face un ping
 imediat, actualizează `last_ping_at` și reconstruiește metadatele de update.
+

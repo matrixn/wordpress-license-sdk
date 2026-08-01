@@ -181,11 +181,12 @@ final class WordPressUpdateAdapter
     {
         $configuration = $this->manager->runtimeConfiguration();
         $latest = (string) ($configuration['latest_version'] ?? '');
+        $allowed = (bool) ($configuration['auto_update_allowed'] ?? false);
         $available = (bool) ($configuration['update_available'] ?? false)
             || ($latest !== '' && $installed !== '' && version_compare($latest, $installed, '>'));
         $package = (string) ($configuration['package_url'] ?? '');
 
-        if (! $available || $latest === '' || $package === '' || $installed === '' || version_compare($latest, $installed, '<=')) {
+        if (! $allowed || ! $available || $latest === '' || $package === '' || $installed === '' || version_compare($latest, $installed, '<=')) {
             return null;
         }
 

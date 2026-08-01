@@ -67,7 +67,8 @@ final class ServerCommandEndpoint
         $this->manager->storeRuntimeConfiguration($configuration);
 
         $autoUpdate = false;
-        if (in_array(($payload['command'] ?? null), ['update_available', 'sync_configuration'], true) && function_exists('wp_update_plugins')) {
+        $command = (string) ($payload['command'] ?? '');
+        if (in_array($command, ['update_available', 'sync_configuration', 'force_update'], true) && function_exists('wp_update_plugins')) {
             if (function_exists('delete_site_transient')) {
                 delete_site_transient('update_plugins');
             }
@@ -77,7 +78,7 @@ final class ServerCommandEndpoint
             $plugin = plugin_basename($this->config->pluginFile);
             $enabled = in_array($plugin, (array) get_site_option('auto_update_plugins', []), true)
                 || (function_exists('wp_is_auto_update_enabled_for_type') && wp_is_auto_update_enabled_for_type('plugin'));
-            if ($enabled && ! empty($configuration['update_available']) && ! empty($configuration['auto_update_allowed'])) {
+            if (($enabled || $command === 'force_update') && ! empty($configuration['update_available']) && ! empty($configuration['auto_update_allowed'])) {
                 $autoUpdate = $this->manager->updateIfAvailable(true) !== false;
             }
         }

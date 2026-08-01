@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.17] - 2026-08-01
+
+- Added the server-defined ping interval to the read-only license status modal.
+- Added support for a signed force-update command from the license server.
+
 ## [0.1.16] - 2026-08-01
 
 - Added the native WordPress Automatic Updates column control for private plugins.

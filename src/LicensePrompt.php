@@ -318,6 +318,7 @@ final class LicensePrompt
         $updateAvailable = ! empty($status['update_available']);
         $autoEnabled = ! empty($status['auto_update_enabled']);
         $autoAllowed = ! empty($status['auto_update_allowed']);
+        $pingInterval = (int) ($status['ping_interval_hours'] ?? 0);
         ?>
         <style>
             .zion-license-status-modal{position:fixed;z-index:100000;inset:0;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(15,23,42,.58)}
@@ -333,6 +334,7 @@ final class LicensePrompt
                     <div class="zion-license-status-card"><small><?php echo esc_html($this->t('Versiune server')); ?></small><strong><?php echo esc_html((string) ($status['latest_version'] ?? '—')); ?><?php if ($updateAvailable) : ?> <em><?php echo esc_html($this->t('Update disponibil')); ?></em><?php endif; ?></strong></div>
                     <div class="zion-license-status-card"><small><?php echo esc_html($this->t('SDK instalat')); ?></small><strong><?php echo esc_html((string) ($status['sdk_version'] ?? '—')); ?></strong></div>
                     <div class="zion-license-status-card"><small><?php echo esc_html($this->t('Auto-update')); ?></small><strong><?php echo esc_html($autoAllowed ? ($autoEnabled ? $this->t('Activat') : $this->t('Dezactivat')) : $this->t('Blocat de server')); ?></strong></div>
+                    <div class="zion-license-status-card"><small><?php echo esc_html($this->t('Frecvență ping')); ?></small><strong><?php echo esc_html($pingInterval > 0 ? $pingInterval.' '.$this->t('ore') : '—'); ?></strong></div>
                     <div class="zion-license-status-card"><small><?php echo esc_html($this->t('Ultima comunicare cu serverul')); ?></small><strong><?php echo esc_html((string) ($status['last_ping_at'] ?? '—')); ?></strong></div>
                 </div>
                 <h3><?php echo esc_html($this->t('Changelog')); ?></h3>
@@ -393,3 +395,4 @@ final class LicensePrompt
         exit;
     }
 }
+
