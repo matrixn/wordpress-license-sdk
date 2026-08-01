@@ -57,7 +57,7 @@ final class WordPressUpdateAdapter
         wp_update_plugins();
     }
 
-    public function filterAutoUpdate(bool|null $update, object $item): bool|null
+    public function filterAutoUpdate(?bool $update, object $item): ?bool
     {
         if (($item->plugin ?? null) !== plugin_basename($this->config->pluginFile)) {
             return $update;
@@ -109,7 +109,7 @@ final class WordPressUpdateAdapter
             'changelog' => (string) ($configuration['changelog'] ?? ''),
             'auto_update_allowed' => (bool) ($configuration['auto_update_allowed'] ?? false),
             'auto_update_enabled' => $this->isAutoUpdateEnabled(),
-            'sdk_version' => \Zion\WordPressLicense\LicenseManager::VERSION,
+            'sdk_version' => LicenseManager::VERSION,
             'last_update_at' => function_exists('get_option') ? get_option($this->lastUpdateOption(), null) : null,
         ];
     }
@@ -138,7 +138,7 @@ final class WordPressUpdateAdapter
             require_once ABSPATH.'wp-admin/includes/class-wp-upgrader-skin.php';
         }
 
-        $skin = new \Automatic_Upgrader_Skin();
+        $skin = new \Automatic_Upgrader_Skin;
         $upgrader = new \Plugin_Upgrader($skin);
         $result = $upgrader->upgrade(
             plugin_basename($this->config->pluginFile),
@@ -184,7 +184,6 @@ final class WordPressUpdateAdapter
         ];
     }
 
-    /** @return stdClass|null */
     private function availableUpdate(string $installed): ?stdClass
     {
         $configuration = $this->manager->runtimeConfiguration();

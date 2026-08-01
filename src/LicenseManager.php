@@ -7,6 +7,7 @@ final class LicenseManager
     public const VERSION = '0.1.19';
 
     private ?LicensePrompt $prompt = null;
+
     private ?WordPressUpdateAdapter $updates = null;
 
     public function __construct(private readonly Config $config, private readonly WordPressHttpClient $http = new WordPressHttpClient)
@@ -381,10 +382,25 @@ final class LicenseManager
         return 'zion_license_heartbeat_'.md5($this->config->productSlug);
     }
 
-    private function licenseStateOption(): string { return 'zion_license_state_'.md5($this->config->productSlug); }
-    private function detailsOption(): string { return 'zion_license_details_'.md5($this->config->productSlug); }
-    private function lastPingOption(): string { return 'zion_license_last_ping_'.md5($this->config->productSlug); }
-    private function lastAdminRefreshOption(): string { return 'zion_license_admin_refresh_'.md5($this->config->productSlug); }
+    private function licenseStateOption(): string
+    {
+        return 'zion_license_state_'.md5($this->config->productSlug);
+    }
+
+    private function detailsOption(): string
+    {
+        return 'zion_license_details_'.md5($this->config->productSlug);
+    }
+
+    private function lastPingOption(): string
+    {
+        return 'zion_license_last_ping_'.md5($this->config->productSlug);
+    }
+
+    private function lastAdminRefreshOption(): string
+    {
+        return 'zion_license_admin_refresh_'.md5($this->config->productSlug);
+    }
 
     private function pingIntervalHours(): int
     {
