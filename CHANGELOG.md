@@ -12,6 +12,8 @@
 - token opac per instalare, stocat criptat în WordPress;
 - fallback compatibil pentru serverele care nu au încă endpointul de activare;
 - răspunsuri de server cu versiunea minimă și recomandată a SDK-ului.
+- enum-uri pentru stările licenței și politica offline;
+- jitter și lock pentru heartbeat, plus hook-uri pentru ping reușit/eșuat și schimbări de stare.
 
 ### Security
 

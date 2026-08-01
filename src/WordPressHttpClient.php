@@ -2,12 +2,16 @@
 
 namespace Zion\WordPressLicense;
 
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 use Zion\WordPressLicense\Exceptions\ApiException;
 use Zion\WordPressLicense\Exceptions\ServerUnavailableException;
 use RuntimeException;
 
 final class WordPressHttpClient
 {
+    public function __construct(private readonly LoggerInterface $logger = new NullLogger) {}
+
     /** @param array<string, mixed> $payload @return array<string, mixed> */
     public function post(string $url, array $payload, array $headers = []): array
     {
@@ -34,17 +38,19 @@ final class WordPressHttpClient
 
                 if (is_wp_error($response)) {
                     if ($attempt < 3) {
-                        usleep(250000 * $attempt);
+                        usleep($this->backoffMicroseconds($attempt));
 
                         continue;
                     }
 
+                    $this->logger->warning('Zion license server request failed.', ['request_id' => $requestId]);
                     throw new ServerUnavailableException('The license server could not be reached.', $requestId);
                 }
 
                 $statusCode = (int) wp_remote_retrieve_response_code($response);
                 if (($statusCode === 429 || $statusCode >= 500) && $attempt < 3) {
-                    usleep(250000 * $attempt);
+                    $retryAfter = (int) wp_remote_retrieve_header($response, 'retry-after');
+                    usleep($retryAfter > 0 ? min($retryAfter * 1_000_000, 5_000_000) : $this->backoffMicroseconds($attempt));
 
                     continue;
                 }
@@ -57,13 +63,19 @@ final class WordPressHttpClient
                     $errorCode = is_string($error['code'] ?? null) ? $error['code'] : 'api_error';
                     $errorMessage = is_string($error['message'] ?? null) ? $error['message'] : "License server rejected the request (HTTP {$statusCode}).";
 
-                    throw new ApiException(
+                    $exception = new ApiException(
                         $errorMessage.$reference,
                         $errorCode,
                         $statusCode,
                         $responseId !== '' ? $responseId : $requestId,
                         is_array($error['details'] ?? null) ? $error['details'] : [],
                     );
+                    $this->logger->warning('Zion license server rejected a request.', [
+                        'request_id' => $exception->requestId,
+                        'code' => $exception->errorCode,
+                        'status' => $exception->statusCode,
+                    ]);
+                    throw $exception;
                 }
 
                 return $body;
@@ -71,5 +83,12 @@ final class WordPressHttpClient
         }
 
         throw new RuntimeException('WordPress HTTP API is not available.');
+    }
+
+    private function backoffMicroseconds(int $attempt): int
+    {
+        $base = [250_000, 750_000, 2_000_000][$attempt - 1] ?? 2_000_000;
+
+        return random_int((int) ($base * 0.75), (int) ($base * 1.25));
     }
 }

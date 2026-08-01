@@ -49,12 +49,18 @@ Răspunsurile API folosesc protocolul Zion `1.0`, iar erorile au coduri stabile
 - verificare strictă a versiunii serverului și executarea update-ului privat prin
   `LicenseManager::updateIfAvailable()`;
 - verificarea entitlements prin `FeatureGate`;
+- stări explicite de licență și politică offline `Lenient` implicită;
+- heartbeat cu jitter și lock pentru a evita ping-urile concurente;
 - planuri Free, Pro, Business și Agency transmise de server;
 - verificarea funcțiilor premium prin `LicenseManager::allows()`;
 - suport pentru pluginuri multilingve prin text domain.
 
 Pentru fluxul complet, inclusiv GitHub Actions și includerea SDK-ului în ZIP,
 consultă ghidul de integrare.
+
+Politica offline implicită (`OfflinePolicy::Lenient`) păstrează funcțiile premium
+până la `grace_until` primit de la server. `OfflinePolicy::Strict` poate fi
+folosită pentru integrări care trebuie să ceară o verificare online mai strictă.
 
 ## Verificare și executare update
 

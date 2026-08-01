@@ -56,7 +56,8 @@ final class LicenseManager
         }
 
         if (! wp_next_scheduled($this->heartbeatHook())) {
-            wp_schedule_event(time() + min($interval, HOUR_IN_SECONDS), $schedule, $this->heartbeatHook());
+            $jitter = random_int(300, max(300, min($interval, HOUR_IN_SECONDS)));
+            wp_schedule_event(time() + $jitter, $schedule, $this->heartbeatHook());
         }
     }
 
@@ -66,10 +67,18 @@ final class LicenseManager
             return;
         }
 
+        $lock = new HeartbeatLock('zion_license_heartbeat_lock_'.md5($this->config->productSlug));
+        if (! $lock->acquire()) {
+            return;
+        }
+
         try {
             $this->ping($this->licenseKey());
-        } catch (\RuntimeException) {
+        } catch (\Throwable $exception) {
+            $this->markOfflineFailure($exception);
             // The next scheduled heartbeat retries without breaking the WordPress site.
+        } finally {
+            $lock->release();
         }
     }
 
@@ -118,13 +127,14 @@ final class LicenseManager
                 }
             }
         }
-        $response['license_state'] = get_option($this->licenseStateOption(), 'unknown');
+        $response['license_state'] = $this->effectiveLicenseState();
         $response['plan'] = $this->plan();
         $response['entitlements'] = $this->entitlements();
         $response['license_key_present'] = $this->licenseKey() !== null;
         $response['activation_token_present'] = $this->activationToken() !== null;
         $response['callback'] = $this->callbackStatus();
         $response['last_ping_at'] = get_option($this->lastPingOption(), null);
+        $response['last_error'] = function_exists('get_option') ? get_option($this->lastErrorOption(), null) : null;
         $response['installed_version'] = $this->installedVersion();
         $response['protocol'] = $this->protocolStatus();
 
@@ -168,6 +178,10 @@ final class LicenseManager
     /** @return array<string, bool> */
     public function entitlements(): array
     {
+        if (! in_array($this->effectiveLicenseState(), ['active', 'grace_period', 'free'], true)) {
+            return [];
+        }
+
         $entitlements = $this->runtimeConfiguration()['entitlements'] ?? [];
 
         if (! is_array($entitlements)) {
@@ -208,7 +222,8 @@ final class LicenseManager
 
         try {
             return $this->ping($licenseKey);
-        } catch (\Throwable) {
+        } catch (\Throwable $exception) {
+            $this->markOfflineFailure($exception);
             return $this->runtimeConfiguration();
         }
     }
@@ -226,7 +241,8 @@ final class LicenseManager
         if ($updateAnnounced && $packageExpired && $this->licenseKey() !== null) {
             try {
                 return $this->ping($this->licenseKey());
-            } catch (\Throwable) {
+            } catch (\Throwable $exception) {
+                $this->markOfflineFailure($exception);
                 return $configuration;
             }
         }
@@ -285,9 +301,20 @@ final class LicenseManager
                 'license_state' => $response['license_state'] ?? null,
             ],
         ));
-        update_option($this->licenseStateOption(), sanitize_key((string) ($response['license_state'] ?? 'unknown')), false);
+        $oldState = function_exists('get_option') ? sanitize_key((string) get_option($this->licenseStateOption(), 'unknown')) : 'unknown';
+        $newState = sanitize_key((string) ($response['license_state'] ?? 'unknown'));
+        update_option($this->licenseStateOption(), $newState, false);
         update_option($this->lastPingOption(), current_time('mysql'), false);
         update_option($this->detailsOption(), $response, false);
+        if (function_exists('delete_option')) {
+            delete_option($this->lastErrorOption());
+        }
+        if (function_exists('do_action')) {
+            do_action('zion_license_ping_succeeded', $response);
+            if ($oldState !== $newState) {
+                do_action('zion_license_state_changed', $oldState, $newState);
+            }
+        }
 
         return $response;
     }
@@ -534,7 +561,7 @@ final class LicenseManager
     {
         $theme = function_exists('wp_get_theme') ? wp_get_theme() : null;
 
-        return array_filter([
+        $data = array_filter([
             'site_language' => function_exists('get_locale') ? get_locale() : null,
             'timezone' => function_exists('wp_timezone_string') ? wp_timezone_string() : null,
             'is_multisite' => function_exists('is_multisite') ? is_multisite() : null,
@@ -543,6 +570,10 @@ final class LicenseManager
             'theme_name' => $theme ? $theme->get('Name') : null,
             'theme_version' => $theme ? $theme->get('Version') : null,
         ], static fn ($value) => $value !== null && $value !== '');
+
+        return function_exists('apply_filters')
+            ? (array) apply_filters('zion_license_system_data', $data)
+            : $data;
     }
 
     /** @param array<string, mixed> $configuration */
@@ -579,6 +610,49 @@ final class LicenseManager
     private function lastAdminRefreshOption(): string
     {
         return 'zion_license_admin_refresh_'.md5($this->config->productSlug);
+    }
+
+    private function lastErrorOption(): string
+    {
+        return 'zion_license_last_error_'.md5($this->config->productSlug);
+    }
+
+    private function markOfflineFailure(\Throwable $exception): void
+    {
+        if (! function_exists('update_option')) {
+            return;
+        }
+
+        update_option($this->lastErrorOption(), [
+            'code' => $exception instanceof ApiException ? $exception->errorCode : 'server_unavailable',
+            'message' => substr($exception->getMessage(), 0, 500),
+            'at' => current_time('mysql'),
+        ], false);
+        if (function_exists('do_action')) {
+            do_action('zion_license_ping_failed', $exception);
+        }
+    }
+
+    private function effectiveLicenseState(): string
+    {
+        $state = sanitize_key((string) (function_exists('get_option') ? get_option($this->licenseStateOption(), 'unknown') : 'unknown'));
+        $configuration = $this->runtimeConfiguration();
+        $lastError = function_exists('get_option') ? get_option($this->lastErrorOption(), null) : null;
+        if (! is_array($lastError)) {
+            return $state !== '' ? $state : LicenseState::Unconfigured->value;
+        }
+
+        if ($state === 'active' && $this->config->offlinePolicy === OfflinePolicy::Lenient) {
+            $graceUntil = isset($configuration['grace_until']) ? strtotime((string) $configuration['grace_until']) : false;
+            if ($graceUntil !== false && $graceUntil > time()) {
+                return LicenseState::GracePeriod->value;
+            }
+            if (! array_key_exists('expires_at', $configuration) || $configuration['expires_at'] === null) {
+                return LicenseState::Active->value;
+            }
+        }
+
+        return LicenseState::Unreachable->value;
     }
 
     private function activationTokenOption(): string
