@@ -15,7 +15,25 @@ folosește `productSlug` și `productKey` ca identificatori publici ai produsulu
 cheia de licență, tokenul de activare și URL-urile temporare de update sunt
 gestionate de serverul Zion.
 
-Versiunea curentă: **0.2.0**.
+Versiunea curentă: **0.3.0**.
+
+## Activare și dezactivare explicită
+
+SDK-ul 0.3 folosește un token opac per instalare după activarea inițială.
+Cheia de licență este trimisă la activare, iar heartbeat-urile ulterioare pot
+folosi tokenul fără să retransmită cheia.
+
+```php
+$licenseManager->activate($licenseKey);
+$status = $licenseManager->validateLicense();
+$licenseManager->deactivate();
+```
+
+Dezactivarea este explicită și eliberează activarea de pe server. Dezactivarea
+pluginului nu dezactivează automat licența.
+
+Răspunsurile API folosesc protocolul Zion `1.0`, iar erorile au coduri stabile
+în `Zion\\WordPressLicense\\Exceptions\\ApiException`.
 
 ## Ce oferă SDK-ul
 

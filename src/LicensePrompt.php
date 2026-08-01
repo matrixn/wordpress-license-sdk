@@ -2,6 +2,7 @@
 
 namespace Zion\WordPressLicense;
 
+use Zion\WordPressLicense\Exceptions\ApiException;
 use RuntimeException;
 
 /**
@@ -99,7 +100,16 @@ final class LicensePrompt
         $this->manager->storeLicenseKey($key);
 
         try {
-            $response = $this->manager->ping($key);
+            try {
+                $response = $this->manager->activate($key);
+            } catch (ApiException $exception) {
+                // Keep older License Servers usable during a rolling deployment.
+                if ($exception->statusCode !== 404) {
+                    throw $exception;
+                }
+
+                $response = $this->manager->ping($key);
+            }
             $state = isset($response['license_state']) ? sanitize_key((string) $response['license_state']) : 'unlicensed';
             update_option($this->stateOption(), $state, false);
 

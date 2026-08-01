@@ -37,6 +37,13 @@ final class SecretStore
         update_option($option, self::encrypt($value), false);
     }
 
+    public static function delete(string $option): void
+    {
+        if (function_exists('delete_option')) {
+            delete_option($option);
+        }
+    }
+
     private static function encrypt(string $value): string
     {
         if (! function_exists('openssl_encrypt')) {

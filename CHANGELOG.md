@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-02
+
+### Added
+
+- protocol Zion versionat (`1.0`) și header `X-Zion-Protocol-Version`;
+- excepții API cu cod, status și request ID;
+- activare, validare și dezactivare explicită;
+- token opac per instalare, stocat criptat în WordPress;
+- fallback compatibil pentru serverele care nu au încă endpointul de activare;
+- răspunsuri de server cu versiunea minimă și recomandată a SDK-ului.
+
+### Security
+
+- heartbeat-ul folosește tokenul de instalare după activare și nu retransmite
+  cheia de licență când tokenul este disponibil;
+- tokenul este revocat la dezactivarea explicită.
+
 - Criptează cheia de licență în opțiunea WordPress și migrează automat valorile legacy stocate în clar.
 - Sanitizează configurația primită prin callback-ul serverului înainte de a o persista.
 - Reîmprospătează URL-ul semnat de update când cache-ul local a expirat.

@@ -2,9 +2,11 @@
 
 namespace Zion\WordPressLicense;
 
+use Zion\WordPressLicense\Exceptions\ApiException;
+
 final class LicenseManager
 {
-    public const VERSION = '0.2.0';
+    public const VERSION = '0.3.0';
 
     private ?LicensePrompt $prompt = null;
 
@@ -120,6 +122,7 @@ final class LicenseManager
         $response['plan'] = $this->plan();
         $response['entitlements'] = $this->entitlements();
         $response['license_key_present'] = $this->licenseKey() !== null;
+        $response['activation_token_present'] = $this->activationToken() !== null;
         $response['callback'] = $this->callbackStatus();
         $response['last_ping_at'] = get_option($this->lastPingOption(), null);
         $response['installed_version'] = $this->installedVersion();
@@ -241,7 +244,6 @@ final class LicenseManager
             'plugin_version' => $this->header('Version'),
             'wordpress_version' => function_exists('get_bloginfo') ? get_bloginfo('version') : null,
             'php_version' => PHP_VERSION,
-            'license_key' => $licenseKey,
             'sdk_version' => self::VERSION,
             'callback_url' => $this->callbackUrl(),
             'callback_secret' => $this->callbackSecret(),
@@ -252,11 +254,30 @@ final class LicenseManager
         }
 
         $payload['system_data'] = $this->systemData();
-        $response = $this->http->post(
-            rtrim($this->config->apiUrl, '/').'/wordpress/ping',
-            array_filter($payload),
-            ['X-Zion-Product-Key' => $this->config->productKey],
-        );
+        $headers = ['X-Zion-Product-Key' => $this->config->productKey];
+        $token = $this->activationToken();
+        if ($token !== null) {
+            $headers['Authorization'] = 'Bearer '.$token;
+        } else {
+            $payload['license_key'] = $licenseKey ?? $this->licenseKey();
+        }
+
+        try {
+            $response = $this->http->post(rtrim($this->config->apiUrl, '/').'/wordpress/ping', array_filter($payload), $headers);
+        } catch (ApiException $exception) {
+            if ($token === null || ! in_array($exception->errorCode, ['invalid_activation_token', 'activation_not_found'], true)) {
+                throw $exception;
+            }
+
+            $this->clearActivationToken();
+            $payload['license_key'] = $licenseKey ?? $this->licenseKey();
+            unset($headers['Authorization']);
+            $response = $this->http->post(rtrim($this->config->apiUrl, '/').'/wordpress/ping', array_filter($payload), $headers);
+        }
+
+        if (is_string($response['activation_token'] ?? null) && $response['activation_token'] !== '') {
+            $this->storeActivationToken($response['activation_token']);
+        }
         $this->storeRuntimeConfiguration(array_merge(
             is_array($response['configuration'] ?? null) ? $response['configuration'] : [],
             [
@@ -378,9 +399,89 @@ final class LicenseManager
     }
 
     /** @return array<string, mixed> */
+    public function activate(string $licenseKey): array
+    {
+        $payload = [
+            'product_slug' => $this->config->productSlug,
+            'installation_uuid' => $this->installationId(),
+            'site_url' => function_exists('home_url') ? home_url('/') : '',
+            'plugin_version' => $this->header('Version'),
+            'sdk_version' => self::VERSION,
+            'wordpress_version' => function_exists('get_bloginfo') ? get_bloginfo('version') : null,
+            'php_version' => PHP_VERSION,
+            'license_key' => $licenseKey,
+            'callback_url' => $this->callbackUrl(),
+            'callback_secret' => $this->callbackSecret(),
+        ];
+        $response = $this->http->post(rtrim($this->config->apiUrl, '/').'/licenses/activate', array_filter($payload), [
+            'X-Zion-Product-Key' => $this->config->productKey,
+        ]);
+        $data = is_array($response['data'] ?? null) ? $response['data'] : $response;
+        $this->storeLicenseKey($licenseKey);
+        if (is_string($data['activation_token'] ?? null)) {
+            $this->storeActivationToken($data['activation_token']);
+        }
+        $this->storeRuntimeConfiguration($data);
+        update_option($this->licenseStateOption(), sanitize_key((string) ($data['license_state'] ?? 'unknown')), false);
+        update_option($this->lastPingOption(), current_time('mysql'), false);
+        update_option($this->detailsOption(), $data, false);
+
+        return $data;
+    }
+
+    /** @return array<string, mixed> */
+    public function validateLicense(): array
+    {
+        $token = $this->activationToken();
+        if ($token === null) {
+            return $this->ping($this->licenseKey());
+        }
+
+        $response = $this->http->post(rtrim($this->config->apiUrl, '/').'/licenses/validate', [
+            'product_slug' => $this->config->productSlug,
+            'installation_uuid' => $this->installationId(),
+            'site_url' => function_exists('home_url') ? home_url('/') : '',
+        ], [
+            'Authorization' => 'Bearer '.$token,
+            'X-Zion-Product-Key' => $this->config->productKey,
+        ]);
+        $data = is_array($response['data'] ?? null) ? $response['data'] : $response;
+        $this->storeRuntimeConfiguration($data);
+        update_option($this->licenseStateOption(), sanitize_key((string) ($data['license_state'] ?? 'unknown')), false);
+        update_option($this->lastPingOption(), current_time('mysql'), false);
+        update_option($this->detailsOption(), $data, false);
+
+        return $data;
+    }
+
+    /** @return array<string, mixed> */
+    public function deactivate(): array
+    {
+        $token = $this->activationToken();
+        if ($token === null) {
+            $this->clearLocalLicenseState();
+
+            return ['license_state' => 'deactivated'];
+        }
+
+        $response = $this->http->post(rtrim($this->config->apiUrl, '/').'/licenses/deactivate', [
+            'product_slug' => $this->config->productSlug,
+            'installation_uuid' => $this->installationId(),
+            'site_url' => function_exists('home_url') ? home_url('/') : '',
+        ], [
+            'Authorization' => 'Bearer '.$token,
+            'X-Zion-Product-Key' => $this->config->productKey,
+        ]);
+        $data = is_array($response['data'] ?? null) ? $response['data'] : $response;
+        $this->clearLocalLicenseState();
+
+        return $data;
+    }
+
+    /** @return array<string, mixed> */
     public function runtimeConfiguration(): array
     {
-        $configuration = function_exists('get_option') ? get_option('zion_license_runtime_'.md5($this->config->productSlug), []) : [];
+        $configuration = function_exists('get_option') ? get_option($this->runtimeOption(), []) : [];
 
         return is_array($configuration) ? $configuration : [];
     }
@@ -451,7 +552,7 @@ final class LicenseManager
             return;
         }
 
-        update_option('zion_license_runtime_'.md5($this->config->productSlug), $configuration, false);
+        update_option($this->runtimeOption(), $configuration, false);
         $this->scheduleHeartbeat(true);
     }
 
@@ -478,6 +579,46 @@ final class LicenseManager
     private function lastAdminRefreshOption(): string
     {
         return 'zion_license_admin_refresh_'.md5($this->config->productSlug);
+    }
+
+    private function activationTokenOption(): string
+    {
+        return 'zion_license_activation_token_'.md5($this->config->productSlug);
+    }
+
+    private function activationToken(): ?string
+    {
+        return SecretStore::read($this->activationTokenOption());
+    }
+
+    private function storeActivationToken(string $token): void
+    {
+        SecretStore::write($this->activationTokenOption(), $token);
+    }
+
+    private function clearActivationToken(): void
+    {
+        SecretStore::delete($this->activationTokenOption());
+    }
+
+    private function clearLocalLicenseState(): void
+    {
+        SecretStore::delete($this->config->licenseOption());
+        $this->clearActivationToken();
+        if (function_exists('delete_option')) {
+            delete_option($this->licenseStateOption());
+            delete_option($this->detailsOption());
+            delete_option($this->runtimeOption());
+        }
+        if (function_exists('wp_clear_scheduled_hook')) {
+            wp_clear_scheduled_hook($this->heartbeatHook());
+        }
+        $this->clearUpdateCache();
+    }
+
+    private function runtimeOption(): string
+    {
+        return 'zion_license_runtime_'.md5($this->config->productSlug);
     }
 
     private function pingIntervalHours(): int
