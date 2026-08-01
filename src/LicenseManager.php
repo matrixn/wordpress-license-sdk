@@ -148,6 +148,9 @@ final class LicenseManager
             $response['auto_update_enabled'] = $update['auto_update_enabled'];
             $response['sdk_version'] = $update['sdk_version'];
             $response['last_update_at'] = $update['last_update_at'];
+            $response['manifest'] = $update['manifest'];
+            $response['manifest_verified'] = $update['manifest_verified'];
+            $response['update_blocked_reason'] = $update['blocked_reason'];
         }
 
         return $response;
@@ -369,6 +372,31 @@ final class LicenseManager
     public function updateIfAvailable(bool $internal = false): mixed
     {
         return $this->updates?->updateIfAvailable($internal) ?? false;
+    }
+
+    public function reportUpdateResult(string $version, bool $success, ?string $error = null): void
+    {
+        $token = $this->activationToken();
+        if ($token === null) {
+            return;
+        }
+
+        try {
+            $this->http->post(rtrim($this->config->apiUrl, '/').'/updates/report', [
+                'product_slug' => $this->config->productSlug,
+                'installation_uuid' => $this->installationId(),
+                'version' => $version,
+                'status' => $success ? 'success' : 'failed',
+                'error' => $error,
+            ], [
+                'Authorization' => 'Bearer '.$token,
+                'X-Zion-Product-Key' => $this->config->productKey,
+            ]);
+        } catch (\Throwable $exception) {
+            if (function_exists('do_action')) {
+                do_action('zion_license_update_report_failed', $exception, $version, $success);
+            }
+        }
     }
 
     /**

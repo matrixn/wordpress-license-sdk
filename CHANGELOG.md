@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-02
+
+### Added
+
+- release manifests signed with Ed25519 and verified in the SDK;
+- SHA-256 verification of the downloaded package before WordPress installation;
+- PHP, WordPress and minimum SDK compatibility checks;
+- update result reporting back to the License Server;
+- idempotent server configuration commands (excluding `force_update`).
+
 ## [0.3.0] - 2026-08-02
 
 ### Added

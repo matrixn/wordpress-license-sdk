@@ -16,6 +16,9 @@ final class Config
         public readonly string $textDomain = '',
         public readonly ?string $licenseOption = null,
         public readonly OfflinePolicy $offlinePolicy = OfflinePolicy::Lenient,
+        public readonly string $updatePublicKey = '',
+        public readonly string $updateKeyId = '',
+        public readonly bool $requireSignedUpdates = false,
     ) {}
 
     /** Validates the values supplied by the plugin bootstrap. */

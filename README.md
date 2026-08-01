@@ -7,7 +7,7 @@ Documentația completă de integrare se află în [docs/wordpress-integration.md
 ## Instalare
 
 ```bash
-composer require zion/wordpress-license-sdk:^0.2
+composer require zion/wordpress-license-sdk:^0.3
 ```
 
 În arhiva finală a pluginului trebuie inclus și directorul `vendor/`. SDK-ul
@@ -67,6 +67,28 @@ folosită pentru integrări care trebuie să ceară o verificare online mai stri
 SDK-ul compară versiunea din headerul pluginului cu versiunea publicată de Zion.
 Un update este disponibil numai când versiunea serverului este strict mai mare și
 serverul a furnizat un URL ZIP temporar semnat.
+
+Pentru verificarea criptografică a release-urilor, configurează cheia publică
+Ed25519 livrată de server. Cheia este publică și poate fi inclusă în plugin;
+cheia privată rămâne exclusiv pe server.
+
+```php
+$config = new Config(
+    apiUrl: 'https://license.zion3d.ro/api/v1',
+    productSlug: 'demo-plugin',
+    pluginFile: __FILE__,
+    productKey: 'zion_public_product_key',
+    updatePublicKey: 'BASE64_ED25519_PUBLIC_KEY',
+    updateKeyId: 'default',
+    requireSignedUpdates: true,
+);
+```
+
+Manifestul semnat conține versiunea, canalul, numele ZIP-ului și checksum-ul
+SHA-256. SDK-ul verifică semnătura înainte de a afișa update-ul și verifică
+checksum-ul fișierului după download, înainte ca WordPress să îl instaleze.
+Dacă mediul nu este compatibil sau manifestul nu poate fi verificat, update-ul
+este blocat și statusul expune motivul în `update_blocked_reason`.
 
 ```php
 $status = $licenseManager->updateStatus();

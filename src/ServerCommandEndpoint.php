@@ -69,10 +69,20 @@ final class ServerCommandEndpoint
             return new WP_Error('zion_invalid_command', 'Invalid command configuration.', ['status' => 422]);
         }
 
+        $command = (string) ($payload['command'] ?? '');
+        $idempotencyKey = (string) ($payload['idempotency_key'] ?? '');
+        if ($command !== 'force_update' && preg_match('/^zcmd_[a-f0-9]{64}$/', $idempotencyKey) === 1 && function_exists('get_transient')) {
+            $processed = get_transient('zion_license_command_'.md5($idempotencyKey));
+            if (is_array($processed)) {
+                $processed['idempotent_replay'] = true;
+
+                return $processed;
+            }
+        }
+
         $this->manager->storeRuntimeConfiguration($configuration);
 
         $autoUpdate = false;
-        $command = (string) ($payload['command'] ?? '');
         if (in_array($command, ['update_available', 'sync_configuration', 'force_update'], true) && function_exists('wp_update_plugins')) {
             if (function_exists('delete_site_transient')) {
                 delete_site_transient('update_plugins');
@@ -88,7 +98,7 @@ final class ServerCommandEndpoint
             }
         }
 
-        return [
+        $response = [
             'received' => true,
             'protocol_version' => Protocol::VERSION,
             'sdk_version' => LicenseManager::VERSION,
@@ -97,13 +107,19 @@ final class ServerCommandEndpoint
             'latest_version' => $configuration['latest_version'] ?? null,
             'auto_update_attempted' => $autoUpdate,
         ];
+
+        if ($command !== 'force_update' && preg_match('/^zcmd_[a-f0-9]{64}$/', $idempotencyKey) === 1 && function_exists('set_transient')) {
+            set_transient('zion_license_command_'.md5($idempotencyKey), $response, 15 * MINUTE_IN_SECONDS);
+        }
+
+        return $response;
     }
 
     /** @param array<string, mixed> $configuration @return array<string, mixed>|null */
     private function sanitizeConfiguration(array $configuration): ?array
     {
         $result = [];
-        foreach (['protocol_version', 'minimum_sdk_version', 'recommended_sdk_version', 'latest_version', 'server_version', 'sdk_latest_version', 'details_url', 'package_url', 'package_expires_at', 'changelog'] as $key) {
+        foreach (['protocol_version', 'minimum_sdk_version', 'recommended_sdk_version', 'latest_version', 'server_version', 'sdk_latest_version', 'details_url', 'package_url', 'package_expires_at', 'changelog', 'manifest_signature', 'manifest_key_id', 'release_channel'] as $key) {
             if (array_key_exists($key, $configuration) && ! is_scalar($configuration[$key]) && $configuration[$key] !== null) {
                 return null;
             }
@@ -112,6 +128,13 @@ final class ServerCommandEndpoint
                     ? substr($configuration[$key], 0, $key === 'changelog' ? 200000 : 2048)
                     : $configuration[$key];
             }
+        }
+
+        if (isset($configuration['manifest'])) {
+            if (! is_array($configuration['manifest']) || count($configuration['manifest']) > 50) {
+                return null;
+            }
+            $result['manifest'] = $configuration['manifest'];
         }
 
         foreach (['updates_paused', 'released', 'zip_available', 'update_available', 'auto_update_allowed', 'sdk_update_available'] as $key) {

@@ -19,6 +19,7 @@ final class WordPressUpdateAdapter
         add_filter('site_transient_update_plugins', [$this, 'injectUpdate'], 20);
         add_filter('plugins_api', [$this, 'pluginInformation'], 20, 3);
         add_filter('auto_update_plugin', [$this, 'filterAutoUpdate'], 10, 2);
+        add_filter('upgrader_pre_download', [$this, 'verifyPackageDownload'], 10, 3);
         add_action('load-plugins.php', [$this, 'refreshPluginScreen']);
     }
 
@@ -73,7 +74,7 @@ final class WordPressUpdateAdapter
     }
 
     /**
-     * @return array{available: bool, installed_version: string, latest_version: string, package_url: string, details_url: string}
+     * @return array{available: bool, installed_version: string, latest_version: string, package_url: string, details_url: string, manifest: array<string, mixed>, manifest_verified: bool, blocked_reason: ?string}
      */
     public function status(bool $refresh = true): array
     {
@@ -107,6 +108,9 @@ final class WordPressUpdateAdapter
             'package_url' => $package,
             'details_url' => (string) ($configuration['details_url'] ?? rtrim($this->config->apiUrl, '/')),
             'changelog' => (string) ($configuration['changelog'] ?? ''),
+            'manifest' => is_array($configuration['manifest'] ?? null) ? $configuration['manifest'] : [],
+            'manifest_verified' => $this->manifestIsTrusted($configuration),
+            'blocked_reason' => $this->updateBlockedReason($configuration, $installed, $latest),
             'auto_update_allowed' => (bool) ($configuration['auto_update_allowed'] ?? false),
             'auto_update_enabled' => $this->isAutoUpdateEnabled(),
             'sdk_version' => LicenseManager::VERSION,
@@ -153,7 +157,48 @@ final class WordPressUpdateAdapter
             update_option($this->lastUpdateOption(), current_time('mysql'), false);
         }
 
+        $this->manager->reportUpdateResult(
+            $status['latest_version'],
+            $result !== false && ! is_wp_error($result),
+            is_wp_error($result) ? $result->get_error_message() : null,
+        );
+
         return $result;
+    }
+
+    public function verifyPackageDownload(mixed $reply, string $package, mixed $upgrader): mixed
+    {
+        $status = $this->status(false);
+        if ($reply !== false || $package === '' || $package !== $status['package_url']) {
+            return $reply;
+        }
+
+        $sha256 = (string) ($status['manifest']['sha256'] ?? '');
+        if ($sha256 === '') {
+            if (! $this->config->requireSignedUpdates) {
+                return $reply;
+            }
+
+            return new \WP_Error('zion_missing_manifest_checksum', 'The Zion release manifest does not contain a checksum.');
+        }
+
+        if (! function_exists('download_url')) {
+            return new \WP_Error('zion_download_api_unavailable', 'WordPress cannot download the update package.');
+        }
+
+        $temporaryFile = download_url($package, 120);
+        if (is_wp_error($temporaryFile)) {
+            return $temporaryFile;
+        }
+
+        $actual = hash_file('sha256', $temporaryFile);
+        if (! is_string($actual) || ! hash_equals(strtolower($sha256), strtolower($actual))) {
+            @unlink($temporaryFile);
+
+            return new \WP_Error('zion_update_checksum_mismatch', 'The downloaded Zion update failed checksum verification.');
+        }
+
+        return $temporaryFile;
     }
 
     public function pluginInformation(mixed $result, string $action, mixed $args): mixed
@@ -179,7 +224,7 @@ final class WordPressUpdateAdapter
             'requires_php' => (string) ($configuration['requires_php'] ?? ''),
             'sections' => [
                 'description' => $this->config->displayName().' receives private updates from Zion License Server.',
-                'changelog' => 'A new version '.$latest.' is available through Zion License Server.',
+                'changelog' => (string) ($configuration['changelog'] ?? 'A new version '.$latest.' is available through Zion License Server.'),
             ],
         ];
     }
@@ -197,6 +242,10 @@ final class WordPressUpdateAdapter
             return null;
         }
 
+        if (! $this->isCompatible($configuration) || ! $this->manifestIsTrusted($configuration)) {
+            return null;
+        }
+
         return (object) [
             'id' => 'zion-license/'.$this->config->productSlug,
             'slug' => $this->config->productSlug,
@@ -207,6 +256,7 @@ final class WordPressUpdateAdapter
             'requires' => (string) ($configuration['requires_wordpress'] ?? ''),
             'requires_php' => (string) ($configuration['requires_php'] ?? ''),
             'sections' => ['changelog' => (string) ($configuration['changelog'] ?? '')],
+            'zion_manifest' => is_array($configuration['manifest'] ?? null) ? $configuration['manifest'] : [],
             'icons' => [],
             'banners' => [],
         ];
@@ -228,5 +278,61 @@ final class WordPressUpdateAdapter
     private function lastUpdateOption(): string
     {
         return 'zion_license_last_update_'.md5($this->config->productSlug);
+    }
+
+    /** @param array<string, mixed> $configuration */
+    private function manifestIsTrusted(array $configuration): bool
+    {
+        $manifest = $configuration['manifest'] ?? null;
+        $signature = (string) ($configuration['manifest_signature'] ?? '');
+        $publicKey = $this->config->updatePublicKey;
+
+        if (! is_array($manifest)) {
+            return $publicKey === '' && ! $this->config->requireSignedUpdates;
+        }
+
+        if ($publicKey === '') {
+            return ! $this->config->requireSignedUpdates;
+        }
+
+        if ($this->config->updateKeyId !== '' && (string) ($configuration['manifest_key_id'] ?? '') !== $this->config->updateKeyId) {
+            return false;
+        }
+
+        return (new ReleaseManifestVerifier)->verify($manifest, $signature, $publicKey);
+    }
+
+    /** @param array<string, mixed> $configuration */
+    private function isCompatible(array $configuration): bool
+    {
+        $manifest = is_array($configuration['manifest'] ?? null) ? $configuration['manifest'] : $configuration;
+        $php = (string) ($manifest['requires_php'] ?? '');
+        $wordpress = (string) ($manifest['requires_wordpress'] ?? '');
+        $minimumSdk = (string) ($manifest['minimum_sdk_version'] ?? '');
+
+        if ($php !== '' && version_compare(PHP_VERSION, $php, '<')) {
+            return false;
+        }
+        if ($wordpress !== '' && function_exists('get_bloginfo') && version_compare((string) get_bloginfo('version'), $wordpress, '<')) {
+            return false;
+        }
+
+        return $minimumSdk === '' || version_compare(LicenseManager::VERSION, $minimumSdk, '>=');
+    }
+
+    /** @param array<string, mixed> $configuration */
+    private function updateBlockedReason(array $configuration, string $installed, string $latest): ?string
+    {
+        if (! $this->isCompatible($configuration)) {
+            return 'incompatible_environment';
+        }
+        if (! $this->manifestIsTrusted($configuration)) {
+            return 'untrusted_manifest';
+        }
+        if ($latest !== '' && $installed !== '' && version_compare($latest, $installed, '<=')) {
+            return 'up_to_date';
+        }
+
+        return null;
     }
 }
