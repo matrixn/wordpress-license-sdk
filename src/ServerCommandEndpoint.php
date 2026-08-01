@@ -64,6 +64,11 @@ final class ServerCommandEndpoint
             return new WP_Error('zion_invalid_command', 'Invalid command configuration.', ['status' => 422]);
         }
 
+        $configuration = $this->sanitizeConfiguration($configuration);
+        if ($configuration === null) {
+            return new WP_Error('zion_invalid_command', 'Invalid command configuration.', ['status' => 422]);
+        }
+
         $this->manager->storeRuntimeConfiguration($configuration);
 
         $autoUpdate = false;
@@ -91,5 +96,46 @@ final class ServerCommandEndpoint
             'latest_version' => $configuration['latest_version'] ?? null,
             'auto_update_attempted' => $autoUpdate,
         ];
+    }
+
+    /** @param array<string, mixed> $configuration @return array<string, mixed>|null */
+    private function sanitizeConfiguration(array $configuration): ?array
+    {
+        $result = [];
+        foreach (['ping_interval_hours', 'latest_version', 'server_version', 'sdk_latest_version', 'details_url', 'package_url', 'package_expires_at', 'changelog'] as $key) {
+            if (array_key_exists($key, $configuration) && ! is_scalar($configuration[$key]) && $configuration[$key] !== null) {
+                return null;
+            }
+            if (array_key_exists($key, $configuration)) {
+                $result[$key] = is_string($configuration[$key])
+                    ? substr($configuration[$key], 0, $key === 'changelog' ? 200000 : 2048)
+                    : $configuration[$key];
+            }
+        }
+
+        foreach (['updates_paused', 'released', 'zip_available', 'update_available', 'auto_update_allowed', 'sdk_update_available'] as $key) {
+            if (array_key_exists($key, $configuration)) {
+                $result[$key] = (bool) $configuration[$key];
+            }
+        }
+
+        if (isset($configuration['entitlements'])) {
+            if (! is_array($configuration['entitlements']) || count($configuration['entitlements']) > 100) {
+                return null;
+            }
+            $result['entitlements'] = array_map(static fn (mixed $value): bool => $value === true, $configuration['entitlements']);
+        }
+
+        if (($result['ping_interval_hours'] ?? null) !== null && ! in_array((int) $result['ping_interval_hours'], [1, 2, 6, 12, 24], true)) {
+            return null;
+        }
+
+        foreach (['details_url', 'package_url'] as $key) {
+            if (isset($result[$key]) && (! is_string($result[$key]) || ! str_starts_with($result[$key], 'https://'))) {
+                return null;
+            }
+        }
+
+        return $result;
     }
 }

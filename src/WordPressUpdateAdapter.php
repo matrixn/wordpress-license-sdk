@@ -33,7 +33,7 @@ final class WordPressUpdateAdapter
         if (! isset($transient->response) || ! is_array($transient->response)) {
             $transient->response = [];
         }
-        $this->manager->refreshIfDue();
+        $this->manager->refreshForUpdateIfNeeded();
         $update = $this->availableUpdate($installed);
 
         if ($update === null) {
@@ -78,7 +78,7 @@ final class WordPressUpdateAdapter
     public function status(bool $refresh = true): array
     {
         if ($refresh && function_exists('get_option')) {
-            $licenseKey = get_option($this->config->licenseOption(), '');
+            $licenseKey = $this->manager->licenseKey() ?? '';
             if (is_string($licenseKey) && $licenseKey !== '') {
                 try {
                     $this->manager->ping($licenseKey);

@@ -65,7 +65,7 @@ final class LicenseManager
         }
 
         try {
-            $this->ping(get_option($this->config->licenseOption()) ?: null);
+            $this->ping($this->licenseKey());
         } catch (\RuntimeException) {
             // The next scheduled heartbeat retries without breaking the WordPress site.
         }
@@ -82,7 +82,7 @@ final class LicenseManager
             return;
         }
 
-        $licenseKey = get_option($this->config->licenseOption()) ?: null;
+        $licenseKey = $this->licenseKey();
         if (! is_string($licenseKey) || $licenseKey === '') {
             return;
         }
@@ -119,7 +119,7 @@ final class LicenseManager
         $response['license_state'] = get_option($this->licenseStateOption(), 'unknown');
         $response['plan'] = $this->plan();
         $response['entitlements'] = $this->entitlements();
-        $response['license_key_present'] = (bool) get_option($this->config->licenseOption(), '');
+        $response['license_key_present'] = $this->licenseKey() !== null;
         $response['callback'] = $this->callbackStatus();
         $response['last_ping_at'] = get_option($this->lastPingOption(), null);
         $response['installed_version'] = $this->installedVersion();
@@ -175,7 +175,7 @@ final class LicenseManager
             return $this->runtimeConfiguration();
         }
 
-        $licenseKey = get_option($this->config->licenseOption(), '');
+        $licenseKey = $this->licenseKey() ?? '';
         if (! is_string($licenseKey) || $licenseKey === '') {
             return $this->runtimeConfiguration();
         }
@@ -192,6 +192,27 @@ final class LicenseManager
         } catch (\Throwable) {
             return $this->runtimeConfiguration();
         }
+    }
+
+    /** Refreshes sooner when a cached signed package URL has expired. */
+    public function refreshForUpdateIfNeeded(): array
+    {
+        $configuration = $this->runtimeConfiguration();
+        $expiresAt = isset($configuration['package_expires_at'])
+            ? strtotime((string) $configuration['package_expires_at'])
+            : false;
+        $packageExpired = $expiresAt === false || $expiresAt <= time();
+        $updateAnnounced = ! empty($configuration['update_available']);
+
+        if ($updateAnnounced && $packageExpired && $this->licenseKey() !== null) {
+            try {
+                return $this->ping($this->licenseKey());
+            } catch (\Throwable) {
+                return $configuration;
+            }
+        }
+
+        return $this->refreshIfDue();
     }
 
     /** @return array<string, mixed> */
@@ -315,7 +336,7 @@ final class LicenseManager
             return $this->runtimeConfiguration();
         }
 
-        $licenseKey = get_option($this->config->licenseOption(), '');
+        $licenseKey = $this->licenseKey() ?? '';
         if (! is_string($licenseKey) || $licenseKey === '') {
             throw new \RuntimeException('No license key is configured.');
         }
@@ -328,6 +349,16 @@ final class LicenseManager
         }
 
         return $response;
+    }
+
+    public function licenseKey(): ?string
+    {
+        return SecretStore::read($this->config->licenseOption());
+    }
+
+    public function storeLicenseKey(string $licenseKey): void
+    {
+        SecretStore::write($this->config->licenseOption(), $licenseKey);
     }
 
     /** @return array<string, mixed> */

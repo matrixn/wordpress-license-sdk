@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+- Criptează cheia de licență în opțiunea WordPress și migrează automat valorile legacy stocate în clar.
+- Sanitizează configurația primită prin callback-ul serverului înainte de a o persista.
+- Reîmprospătează URL-ul semnat de update când cache-ul local a expirat.
+- Adaugă retry limitat pentru erori temporare și request ID pentru call-urile API.
+
 ## [0.2.0] - 2026-08-01
 
 - Added Free, Pro, Business and Agency plan information from the server.

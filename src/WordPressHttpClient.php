@@ -10,21 +10,52 @@ final class WordPressHttpClient
     public function post(string $url, array $payload, array $headers = []): array
     {
         if (function_exists('wp_remote_post')) {
-            $response = wp_remote_post($url, ['timeout' => 10, 'headers' => array_merge(['Accept' => 'application/json'], $headers), 'body' => $payload]);
-            if (is_wp_error($response)) {
-                throw new RuntimeException($response->get_error_message());
+            $requestId = function_exists('wp_generate_uuid4') ? wp_generate_uuid4() : bin2hex(random_bytes(16));
+            $requestHeaders = array_merge([
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json; charset=utf-8',
+                'X-Request-Id' => $requestId,
+            ], $headers);
+            $encodedPayload = wp_json_encode($payload);
+            if (! is_string($encodedPayload)) {
+                throw new RuntimeException('The license request could not be encoded.');
             }
 
-            $body = json_decode((string) wp_remote_retrieve_body($response), true);
-            $statusCode = (int) wp_remote_retrieve_response_code($response);
-            if ($statusCode >= 400 || ! is_array($body)) {
-                $requestId = (string) wp_remote_retrieve_header($response, 'x-request-id');
-                $reference = $requestId !== '' ? " Request ID: {$requestId}." : '';
+            for ($attempt = 1; $attempt <= 3; $attempt++) {
+                $response = wp_remote_post($url, [
+                    'timeout' => 10,
+                    'sslverify' => true,
+                    'headers' => $requestHeaders,
+                    'body' => $encodedPayload,
+                ]);
 
-                throw new RuntimeException("License server rejected the request (HTTP {$statusCode}).{$reference}");
+                if (is_wp_error($response)) {
+                    if ($attempt < 3) {
+                        usleep(250000 * $attempt);
+
+                        continue;
+                    }
+
+                    throw new RuntimeException('The license server could not be reached.');
+                }
+
+                $statusCode = (int) wp_remote_retrieve_response_code($response);
+                if (($statusCode === 429 || $statusCode >= 500) && $attempt < 3) {
+                    usleep(250000 * $attempt);
+
+                    continue;
+                }
+
+                $body = json_decode((string) wp_remote_retrieve_body($response), true);
+                if ($statusCode >= 400 || ! is_array($body)) {
+                    $responseId = (string) wp_remote_retrieve_header($response, 'x-request-id');
+                    $reference = $responseId !== '' ? " Request ID: {$responseId}." : '';
+
+                    throw new RuntimeException("License server rejected the request (HTTP {$statusCode}).{$reference}");
+                }
+
+                return $body;
             }
-
-            return $body;
         }
 
         throw new RuntimeException('WordPress HTTP API is not available.');

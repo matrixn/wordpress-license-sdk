@@ -81,7 +81,7 @@ final class LicensePrompt
             $this->redirect(wp_get_referer() ?: admin_url('plugins.php'));
         }
 
-        $key = $this->normalizeKey((string) get_option($this->config->licenseOption(), ''));
+        $key = $this->normalizeKey((string) ($this->manager->licenseKey() ?? ''));
         if ($action === 'save') {
             $key = $this->normalizeKey((string) wp_unslash($_POST['zion_license_key'] ?? ''));
         }
@@ -96,7 +96,7 @@ final class LicensePrompt
             $this->redirect();
         }
 
-        update_option($this->config->licenseOption(), $key, false);
+        $this->manager->storeLicenseKey($key);
 
         try {
             $response = $this->manager->ping($key);
@@ -299,7 +299,7 @@ final class LicensePrompt
                 <?php wp_nonce_field($this->nonceAction()); ?>
                 <input type="hidden" name="zion_license_action" value="save"><input type="hidden" name="zion_license_product" value="<?php echo esc_attr($this->config->productSlug); ?>">
                 <label for="<?php echo esc_attr($this->modalId()); ?>-key"><?php echo esc_html($this->t('Cheie de licență')); ?></label>
-                <input id="<?php echo esc_attr($this->modalId()); ?>-key" type="text" name="zion_license_key" value="<?php echo esc_attr((string) get_option($this->config->licenseOption(), '')); ?>" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="<?php echo esc_attr($this->config->licenseExample()); ?>" maxlength="<?php echo esc_attr((string) $this->config->licenseLength()); ?>" required>
+                <input id="<?php echo esc_attr($this->modalId()); ?>-key" type="text" name="zion_license_key" value="<?php echo esc_attr((string) ($this->manager->licenseKey() ?? '')); ?>" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="<?php echo esc_attr($this->config->licenseExample()); ?>" maxlength="<?php echo esc_attr((string) $this->config->licenseLength()); ?>" required>
                 <small class="zion-license-dialog__hint" data-zion-license-hint><?php echo esc_html(sprintf($this->t('Format necesar: %s · %d caractere.'), $this->config->licenseExample(), $this->config->licenseLength())); ?></small>
                 <div class="zion-license-dialog__actions"><button class="button" type="button" data-zion-license-close><?php echo esc_html($this->t('Mai târziu')); ?></button><button class="button button-primary" type="submit"><?php echo esc_html($this->t('Validează și activează')); ?></button></div>
             </form>
