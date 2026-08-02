@@ -15,7 +15,13 @@ folosește `productSlug` și `productKey` ca identificatori publici ai produsulu
 cheia de licență, tokenul de activare și URL-urile temporare de update sunt
 gestionate de serverul Zion.
 
-Versiunea curentă: **0.4.1**.
+Versiunea curentă: **0.4.2**.
+
+La activare, administratorul poate alege explicit dacă permite telemetria
+avansată. Când este activată, SDK-ul trimite doar date tehnice de compatibilitate
+(versiuni, limbă, fus orar, multisite și temă); nu trimite conținut, parole sau
+chei de licență. Serverul poate dezactiva oricând colectarea din setarea
+`telemetry_enabled`, iar SDK-ul afișează starea în modalul licenței.
 
 ## Activare și dezactivare explicită
 

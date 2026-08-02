@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-08-02
+
+### Added
+
+- opt-in advanced telemetry consent in the license activation modal;
+- technical telemetry is sent only after explicit consent and server enablement;
+- telemetry consent and server policy are visible in the license status modal.
+
+### Privacy
+
+- advanced telemetry contains compatibility metadata only; license keys,
+  passwords and site content are never included.
+
 ## [0.4.1] - 2026-08-02
 
 ### Added

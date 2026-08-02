@@ -6,7 +6,7 @@ use Zion\WordPressLicense\Exceptions\ApiException;
 
 final class LicenseManager
 {
-    public const VERSION = '0.4.1';
+    public const VERSION = '0.4.2';
 
     private ?LicensePrompt $prompt = null;
 
@@ -132,6 +132,9 @@ final class LicenseManager
         $response['entitlements'] = $this->entitlements();
         $response['license_key_present'] = $this->licenseKey() !== null;
         $response['activation_token_present'] = $this->activationToken() !== null;
+        $response['telemetry_consent'] = $this->telemetryConsent();
+        $response['telemetry_enabled'] = ! array_key_exists('telemetry_enabled', $response) || (bool) $response['telemetry_enabled'];
+        $response['advanced_telemetry_active'] = $response['telemetry_enabled'] && $response['telemetry_consent'];
         $response['callback'] = $this->callbackStatus();
         $response['last_ping_at'] = get_option($this->lastPingOption(), null);
         $response['last_error'] = function_exists('get_option') ? get_option($this->lastErrorOption(), null) : null;
@@ -274,7 +277,10 @@ final class LicenseManager
             $payload['admin_email'] = get_option('admin_email');
         }
 
-        $payload['system_data'] = $this->systemData();
+        $payload['telemetry_consent'] = $this->telemetryConsent();
+        if ($this->telemetryConsent()) {
+            $payload['system_data'] = $this->systemData();
+        }
         $headers = ['X-Zion-Product-Key' => $this->config->productKey];
         $token = $this->activationToken();
         if ($token !== null) {
@@ -284,7 +290,7 @@ final class LicenseManager
         }
 
         try {
-            $response = $this->http->post(rtrim($this->config->apiUrl, '/').'/wordpress/ping', array_filter($payload), $headers);
+            $response = $this->http->post(rtrim($this->config->apiUrl, '/').'/wordpress/ping', array_filter($payload, static fn (mixed $value): bool => $value !== null), $headers);
         } catch (ApiException $exception) {
             if ($token === null || ! in_array($exception->errorCode, ['invalid_activation_token', 'activation_not_found'], true)) {
                 throw $exception;
@@ -293,7 +299,7 @@ final class LicenseManager
             $this->clearActivationToken();
             $payload['license_key'] = $licenseKey ?? $this->licenseKey();
             unset($headers['Authorization']);
-            $response = $this->http->post(rtrim($this->config->apiUrl, '/').'/wordpress/ping', array_filter($payload), $headers);
+            $response = $this->http->post(rtrim($this->config->apiUrl, '/').'/wordpress/ping', array_filter($payload, static fn (mixed $value): bool => $value !== null), $headers);
         }
 
         if (is_string($response['activation_token'] ?? null) && $response['activation_token'] !== '') {
@@ -456,7 +462,7 @@ final class LicenseManager
     }
 
     /** @return array<string, mixed> */
-    public function activate(string $licenseKey): array
+    public function activate(string $licenseKey, ?bool $telemetryConsent = null): array
     {
         $payload = [
             'product_slug' => $this->config->productSlug,
@@ -469,11 +475,15 @@ final class LicenseManager
             'license_key' => $licenseKey,
             'callback_url' => $this->callbackUrl(),
             'callback_secret' => $this->callbackSecret(),
+            'telemetry_consent' => $telemetryConsent ?? $this->telemetryConsent(),
         ];
         $response = $this->http->post(rtrim($this->config->apiUrl, '/').'/licenses/activate', array_filter($payload), [
             'X-Zion-Product-Key' => $this->config->productKey,
         ]);
         $data = is_array($response['data'] ?? null) ? $response['data'] : $response;
+        if ($telemetryConsent !== null) {
+            $this->setTelemetryConsent($telemetryConsent);
+        }
         $this->storeLicenseKey($licenseKey);
         if (is_string($data['activation_token'] ?? null)) {
             $this->storeActivationToken($data['activation_token']);
@@ -547,6 +557,22 @@ final class LicenseManager
         $configuration = function_exists('get_option') ? get_option($this->runtimeOption(), []) : [];
 
         return is_array($configuration) ? $configuration : [];
+    }
+
+    public function telemetryConsent(): bool
+    {
+        if (! function_exists('get_option')) {
+            return false;
+        }
+
+        return (bool) get_option($this->telemetryConsentOption(), false);
+    }
+
+    public function setTelemetryConsent(bool $consent): void
+    {
+        if (function_exists('update_option')) {
+            update_option($this->telemetryConsentOption(), $consent, false);
+        }
     }
 
     public function callbackSecret(): string
@@ -719,6 +745,7 @@ final class LicenseManager
             delete_option($this->licenseStateOption());
             delete_option($this->detailsOption());
             delete_option($this->runtimeOption());
+            delete_option($this->telemetryConsentOption());
         }
         if (function_exists('wp_clear_scheduled_hook')) {
             wp_clear_scheduled_hook($this->heartbeatHook());
@@ -729,6 +756,11 @@ final class LicenseManager
     private function runtimeOption(): string
     {
         return 'zion_license_runtime_'.md5($this->config->productSlug);
+    }
+
+    private function telemetryConsentOption(): string
+    {
+        return 'zion_license_telemetry_consent_'.md5($this->config->productSlug);
     }
 
     private function pingIntervalHours(): int

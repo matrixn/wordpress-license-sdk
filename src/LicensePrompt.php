@@ -108,11 +108,13 @@ final class LicensePrompt
             $this->redirect();
         }
 
+        $telemetryConsent = ! empty($_POST['zion_telemetry_consent']);
+        $this->manager->setTelemetryConsent($telemetryConsent);
         $this->manager->storeLicenseKey($key);
 
         try {
             try {
-                $response = $this->manager->activate($key);
+                $response = $this->manager->activate($key, $telemetryConsent);
             } catch (ApiException $exception) {
                 // Keep older License Servers usable during a rolling deployment.
                 if ($exception->statusCode !== 404) {
@@ -310,7 +312,7 @@ final class LicensePrompt
         <style>
             .zion-license-modal{position:fixed;z-index:100000;inset:0;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(15,23,42,.45)}
             .zion-license-modal.is-open{display:flex}.zion-license-dialog{width:min(520px,100%);padding:28px;border-radius:14px;background:#fff;box-shadow:0 24px 80px rgba(15,23,42,.3)}
-            .zion-license-dialog h2{margin:0 0 8px;color:#172554}.zion-license-dialog p{margin:0 0 18px;color:#475569}.zion-license-dialog label{display:block;margin-bottom:7px;font-weight:600}.zion-license-dialog input{width:100%;margin:0;padding:10px 12px;letter-spacing:.06em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.zion-license-dialog input.is-valid{border-color:#16a34a;box-shadow:0 0 0 1px #16a34a}.zion-license-dialog input.is-invalid{border-color:#dc2626;box-shadow:0 0 0 1px #dc2626}.zion-license-dialog__hint{display:block;margin:8px 0 18px;color:#64748b;font-size:12px}.zion-license-dialog__hint.is-valid{color:#15803d}.zion-license-dialog__hint.is-invalid{color:#b91c1c}.zion-license-dialog__actions{display:flex;gap:10px;justify-content:flex-end}.zion-license-dialog__message{padding:10px 12px;margin-bottom:16px;border-radius:8px}.zion-license-dialog__message--error{background:#fef2f2;color:#991b1b}.zion-license-dialog__message--success{background:#ecfdf5;color:#166534}
+            .zion-license-dialog h2{margin:0 0 8px;color:#172554}.zion-license-dialog p{margin:0 0 18px;color:#475569}.zion-license-dialog label{display:block;margin-bottom:7px;font-weight:600}.zion-license-dialog input{width:100%;margin:0;padding:10px 12px;letter-spacing:.06em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.zion-license-dialog input.is-valid{border-color:#16a34a;box-shadow:0 0 0 1px #16a34a}.zion-license-dialog input.is-invalid{border-color:#dc2626;box-shadow:0 0 0 1px #dc2626}.zion-license-dialog__hint{display:block;margin:8px 0 18px;color:#64748b;font-size:12px}.zion-license-dialog__hint.is-valid{color:#15803d}.zion-license-dialog__hint.is-invalid{color:#b91c1c}.zion-license-dialog__consent{display:flex!important;align-items:flex-start;gap:10px;margin:4px 0 20px!important;padding:12px;border:1px solid #dbe4ee;border-radius:10px;background:#f8fafc;font-weight:400!important}.zion-license-dialog__consent input{width:auto;margin-top:3px;padding:0;letter-spacing:0;font-family:inherit}.zion-license-dialog__consent strong,.zion-license-dialog__consent small{display:block}.zion-license-dialog__consent strong{color:#172554;font-size:13px}.zion-license-dialog__consent small{margin-top:4px;color:#64748b;font-size:11px;line-height:1.5}.zion-license-dialog__actions{display:flex;gap:10px;justify-content:flex-end}.zion-license-dialog__message{padding:10px 12px;margin-bottom:16px;border-radius:8px}.zion-license-dialog__message--error{background:#fef2f2;color:#991b1b}.zion-license-dialog__message--success{background:#ecfdf5;color:#166534}
         </style>
         <div id="<?php echo esc_attr($this->modalId()); ?>" class="zion-license-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="<?php echo esc_attr($this->modalId()); ?>-title">
             <form class="zion-license-dialog" method="post">
@@ -322,6 +324,7 @@ final class LicensePrompt
                 <label for="<?php echo esc_attr($this->modalId()); ?>-key"><?php echo esc_html($this->t('Cheie de licență')); ?></label>
                 <input id="<?php echo esc_attr($this->modalId()); ?>-key" type="text" name="zion_license_key" value="<?php echo esc_attr((string) ($this->manager->licenseKey() ?? '')); ?>" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="<?php echo esc_attr($this->config->licenseExample()); ?>" maxlength="<?php echo esc_attr((string) $this->config->licenseLength()); ?>" required>
                 <small class="zion-license-dialog__hint" data-zion-license-hint><?php echo esc_html(sprintf($this->t('Format necesar: %s · %d caractere.'), $this->config->licenseExample(), $this->config->licenseLength())); ?></small>
+                <label class="zion-license-dialog__consent"><input type="checkbox" name="zion_telemetry_consent" value="1" <?php checked($this->manager->telemetryConsent(), true); ?>><span><strong><?php echo esc_html($this->t('Activează telemetria avansată')); ?></strong><small><?php echo esc_html($this->t('Opțional: trimitem doar date tehnice pentru compatibilitate și depanare — versiunea pluginului și SDK-ului, versiunea WordPress/PHP, limba, fusul orar, multisite și tema. Nu trimitem conținutul site-ului, chei de licență sau parole.')); ?></small></span></label>
                 <div class="zion-license-dialog__actions"><button class="button" type="button" data-zion-license-close><?php echo esc_html($this->t('Mai târziu')); ?></button><button class="button button-primary" type="submit"><?php echo esc_html($this->t('Validează și activează')); ?></button></div>
             </form>
         </div>
@@ -342,6 +345,8 @@ final class LicensePrompt
         $pingInterval = (int) ($status['ping_interval_hours'] ?? 0);
         $updatesPaused = ! empty($status['updates_paused']);
         $licenseSuffix = (string) ($status['license_key_suffix'] ?? '');
+        $telemetryConsent = ! empty($status['telemetry_consent']);
+        $telemetryEnabled = ! array_key_exists('telemetry_enabled', $status) || ! empty($status['telemetry_enabled']);
         ?>
         <style>
             .zion-license-status-modal{position:fixed;z-index:100000;inset:0;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(15,23,42,.58)}
@@ -361,6 +366,7 @@ final class LicensePrompt
                     <div class="zion-license-status-card"><small><?php echo esc_html($this->t('Update-uri server')); ?></small><strong><?php echo esc_html($updatesPaused ? $this->t('Puse pe pauză') : $this->t('Active')); ?></strong></div>
                     <div class="zion-license-status-card"><small><?php echo esc_html($this->t('Frecvență ping')); ?></small><strong><?php echo esc_html($pingInterval > 0 ? $pingInterval.' '.$this->t('ore') : '—'); ?></strong></div>
                     <div class="zion-license-status-card"><small><?php echo esc_html($this->t('Ultima comunicare cu serverul')); ?></small><strong><?php echo esc_html((string) ($status['last_ping_at'] ?? '—')); ?></strong></div>
+                    <div class="zion-license-status-card"><small><?php echo esc_html($this->t('Telemetrie avansată')); ?></small><strong><?php echo esc_html($telemetryEnabled ? ($telemetryConsent ? $this->t('Activată') : $this->t('Dezactivată')) : $this->t('Dezactivată de server')); ?></strong></div>
                 </div>
                 <h3><?php echo esc_html($this->t('Changelog')); ?></h3>
                 <?php if ($changelog !== '') { ?><div class="zion-license-changelog"><?php $installed = (string) ($status['installed_version'] ?? '');
