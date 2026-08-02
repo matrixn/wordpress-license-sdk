@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-02
+
+### Added
+
+- Serverul poate impune verificarea manifestului semnat prin configurația transmisă SDK-ului.
+- Configurația operațională primită de SDK rămâne compatibilă cu verificarea locală a cheii publice.
+
 ## [0.4.0] - 2026-08-02
 
 ### Added

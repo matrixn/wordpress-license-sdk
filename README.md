@@ -15,7 +15,7 @@ folosește `productSlug` și `productKey` ca identificatori publici ai produsulu
 cheia de licență, tokenul de activare și URL-urile temporare de update sunt
 gestionate de serverul Zion.
 
-Versiunea curentă: **0.4.0**.
+Versiunea curentă: **0.4.1**.
 
 ## Activare și dezactivare explicită
 

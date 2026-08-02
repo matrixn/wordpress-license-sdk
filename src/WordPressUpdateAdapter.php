@@ -175,7 +175,7 @@ final class WordPressUpdateAdapter
 
         $sha256 = (string) ($status['manifest']['sha256'] ?? '');
         if ($sha256 === '') {
-            if (! $this->config->requireSignedUpdates) {
+            if (! $this->signedUpdatesRequired($status)) {
                 return $reply;
             }
 
@@ -288,11 +288,11 @@ final class WordPressUpdateAdapter
         $publicKey = $this->config->updatePublicKey;
 
         if (! is_array($manifest)) {
-            return $publicKey === '' && ! $this->config->requireSignedUpdates;
+            return $publicKey === '' && ! $this->signedUpdatesRequired($configuration);
         }
 
         if ($publicKey === '') {
-            return ! $this->config->requireSignedUpdates;
+            return ! $this->signedUpdatesRequired($configuration);
         }
 
         if ($this->config->updateKeyId !== '' && (string) ($configuration['manifest_key_id'] ?? '') !== $this->config->updateKeyId) {
@@ -348,5 +348,12 @@ final class WordPressUpdateAdapter
             && is_array($apiUrl)
             && ($packageUrl['scheme'] ?? null) === 'https'
             && strtolower((string) ($packageUrl['host'] ?? '')) === strtolower((string) ($apiUrl['host'] ?? ''));
+    }
+
+    /** @param array<string, mixed> $configuration */
+    private function signedUpdatesRequired(array $configuration): bool
+    {
+        return $this->config->requireSignedUpdates
+            || (bool) ($configuration['require_signed_updates'] ?? false);
     }
 }
