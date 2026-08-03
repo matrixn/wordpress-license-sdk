@@ -152,6 +152,10 @@ final class LicensePrompt
         $links[] = sprintf('<a href="#%1$s" data-zion-license-status-open="%1$s">%2$s</a>', esc_attr($this->statusModalId()), esc_html($this->t('Status licență')));
 
         $status = $this->manager->status();
+        if ($this->needsLicense()) {
+            $links[] = sprintf('<a href="#%1$s" data-zion-license-open="%1$s">%2$s</a>', esc_attr($this->modalId()), esc_html($this->t('Adaugă o licență nouă')));
+        }
+
         if (! empty($status['auto_update_allowed'])) {
             $enabled = in_array($this->pluginBasename(), (array) get_site_option('auto_update_plugins', []), true);
             $links[] = sprintf(

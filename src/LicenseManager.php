@@ -6,7 +6,7 @@ use Zion\WordPressLicense\Exceptions\ApiException;
 
 final class LicenseManager
 {
-    public const VERSION = '0.4.3';
+    public const VERSION = '0.4.4';
 
     private ?LicensePrompt $prompt = null;
 
