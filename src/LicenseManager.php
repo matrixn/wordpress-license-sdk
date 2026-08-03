@@ -6,7 +6,7 @@ use Zion\WordPressLicense\Exceptions\ApiException;
 
 final class LicenseManager
 {
-    public const VERSION = '0.4.2';
+    public const VERSION = '0.4.3';
 
     private ?LicensePrompt $prompt = null;
 
@@ -292,6 +292,13 @@ final class LicenseManager
         try {
             $response = $this->http->post(rtrim($this->config->apiUrl, '/').'/wordpress/ping', array_filter($payload, static fn (mixed $value): bool => $value !== null), $headers);
         } catch (ApiException $exception) {
+            if ($exception->statusCode === 410) {
+                return $this->markLocallyRevoked([
+                    'product_state' => 'archived',
+                    'revocation_reason' => 'product_archived',
+                ]);
+            }
+
             if ($token === null || ! in_array($exception->errorCode, ['invalid_activation_token', 'activation_not_found'], true)) {
                 throw $exception;
             }
@@ -300,6 +307,10 @@ final class LicenseManager
             $payload['license_key'] = $licenseKey ?? $this->licenseKey();
             unset($headers['Authorization']);
             $response = $this->http->post(rtrim($this->config->apiUrl, '/').'/wordpress/ping', array_filter($payload, static fn (mixed $value): bool => $value !== null), $headers);
+        }
+
+        if (sanitize_key((string) ($response['license_state'] ?? '')) === 'revoked') {
+            return $this->markLocallyRevoked($response);
         }
 
         if (is_string($response['activation_token'] ?? null) && $response['activation_token'] !== '') {
@@ -507,15 +518,29 @@ final class LicenseManager
             return $this->ping($this->licenseKey());
         }
 
-        $response = $this->http->post(rtrim($this->config->apiUrl, '/').'/licenses/validate', [
-            'product_slug' => $this->config->productSlug,
-            'installation_uuid' => $this->installationId(),
-            'site_url' => function_exists('home_url') ? home_url('/') : '',
-        ], [
-            'Authorization' => 'Bearer '.$token,
-            'X-Zion-Product-Key' => $this->config->productKey,
-        ]);
+        try {
+            $response = $this->http->post(rtrim($this->config->apiUrl, '/').'/licenses/validate', [
+                'product_slug' => $this->config->productSlug,
+                'installation_uuid' => $this->installationId(),
+                'site_url' => function_exists('home_url') ? home_url('/') : '',
+            ], [
+                'Authorization' => 'Bearer '.$token,
+                'X-Zion-Product-Key' => $this->config->productKey,
+            ]);
+        } catch (ApiException $exception) {
+            if ($exception->statusCode === 410) {
+                return $this->markLocallyRevoked([
+                    'product_state' => 'archived',
+                    'revocation_reason' => 'product_archived',
+                ]);
+            }
+
+            throw $exception;
+        }
         $data = is_array($response['data'] ?? null) ? $response['data'] : $response;
+        if (sanitize_key((string) ($data['license_state'] ?? '')) === 'revoked') {
+            return $this->markLocallyRevoked($data);
+        }
         $this->storeRuntimeConfiguration($data);
         update_option($this->licenseStateOption(), sanitize_key((string) ($data['license_state'] ?? 'unknown')), false);
         update_option($this->lastPingOption(), current_time('mysql'), false);
@@ -735,6 +760,60 @@ final class LicenseManager
     private function clearActivationToken(): void
     {
         SecretStore::delete($this->activationTokenOption());
+    }
+
+    /**
+     * Applies a terminal revocation locally even when the server cannot keep
+     * or revoke the installation token anymore. This is intentionally used
+     * for both a graceful 200 response and a terminal 410 response.
+     *
+     * @param array<string, mixed> $details
+     * @return array<string, mixed>
+     */
+    private function markLocallyRevoked(array $details = []): array
+    {
+        $this->clearActivationToken();
+        SecretStore::delete($this->config->licenseOption());
+
+        $runtime = array_merge(
+            $this->runtimeConfiguration(),
+            $details,
+            [
+                'license_state' => 'revoked',
+                'updates_paused' => true,
+                'update_available' => false,
+                'auto_update_allowed' => false,
+                'package_url' => null,
+                'entitlements' => [],
+                'revoked_at' => current_time('mysql'),
+            ],
+        );
+
+        if (function_exists('update_option')) {
+            update_option($this->licenseStateOption(), 'revoked', false);
+            update_option($this->runtimeOption(), $runtime, false);
+            update_option($this->detailsOption(), array_merge(
+                function_exists('get_option') && is_array(get_option($this->detailsOption(), []))
+                    ? get_option($this->detailsOption(), [])
+                    : [],
+                $details,
+                ['license_state' => 'revoked'],
+            ), false);
+            update_option($this->lastPingOption(), current_time('mysql'), false);
+            delete_option($this->lastErrorOption());
+        }
+
+        if (function_exists('wp_clear_scheduled_hook')) {
+            wp_clear_scheduled_hook($this->heartbeatHook());
+        }
+
+        $this->clearUpdateCache();
+
+        if (function_exists('do_action')) {
+            do_action('zion_license_revoked', $runtime);
+        }
+
+        return $runtime;
     }
 
     private function clearLocalLicenseState(): void
