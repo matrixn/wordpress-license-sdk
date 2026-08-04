@@ -6,9 +6,14 @@ use Zion\WordPressLicense\Exceptions\ApiException;
 
 final class LicenseManager
 {
-    public const VERSION = '0.4.5';
+    public const VERSION = '0.4.7';
 
     private ?LicensePrompt $prompt = null;
+
+    public function sdkVersion(): string
+    {
+        return $this->config->installedSdkVersion();
+    }
 
     private ?WordPressUpdateAdapter $updates = null;
 
@@ -44,7 +49,7 @@ final class LicenseManager
         }
 
         $interval = $this->pingIntervalHours() * HOUR_IN_SECONDS;
-        $schedule = 'zion_license_'.md5($this->config->productSlug);
+        $schedule = 'zion_license_'.md5($this->config->storageKey());
         add_filter('cron_schedules', static function (array $schedules) use ($schedule, $interval): array {
             $schedules[$schedule] = ['interval' => $interval, 'display' => 'Zion License heartbeat'];
 
@@ -67,7 +72,7 @@ final class LicenseManager
             return;
         }
 
-        $lock = new HeartbeatLock('zion_license_heartbeat_lock_'.md5($this->config->productSlug));
+        $lock = new HeartbeatLock('zion_license_heartbeat_lock_'.md5($this->config->storageKey()));
         if (! $lock->acquire()) {
             return;
         }
@@ -121,7 +126,7 @@ final class LicenseManager
         $response = $this->runtimeConfiguration();
         $details = function_exists('get_option') ? get_option($this->detailsOption(), []) : [];
         if (is_array($details)) {
-            foreach (['expires_at', 'license_state', 'next_ping_after'] as $key) {
+            foreach (['expires_at', 'license_state', 'next_ping_after', 'license_key_suffix'] as $key) {
                 if (array_key_exists($key, $details)) {
                     $response[$key] = $details[$key];
                 }
@@ -164,13 +169,13 @@ final class LicenseManager
     {
         $configuration = $this->runtimeConfiguration();
         $minimum = (string) ($configuration['minimum_sdk_version'] ?? Protocol::MINIMUM_SDK_VERSION);
-        $recommended = (string) ($configuration['recommended_sdk_version'] ?? self::VERSION);
+        $recommended = (string) ($configuration['recommended_sdk_version'] ?? $this->sdkVersion());
 
         return [
             'version' => (string) ($configuration['protocol_version'] ?? Protocol::VERSION),
             'minimum_sdk_version' => $minimum,
             'recommended_sdk_version' => $recommended,
-            'deprecated' => version_compare(self::VERSION, $minimum, '<'),
+            'deprecated' => version_compare($this->sdkVersion(), $minimum, '<'),
         ];
     }
 
@@ -268,7 +273,7 @@ final class LicenseManager
             'plugin_version' => $this->header('Version'),
             'wordpress_version' => function_exists('get_bloginfo') ? get_bloginfo('version') : null,
             'php_version' => PHP_VERSION,
-            'sdk_version' => self::VERSION,
+            'sdk_version' => $this->sdkVersion(),
             'callback_url' => $this->callbackUrl(),
             'callback_secret' => $this->callbackSecret(),
         ];
@@ -343,7 +348,7 @@ final class LicenseManager
 
     private function installationId(): string
     {
-        $option = 'zion_license_installation_'.md5($this->config->productSlug);
+        $option = 'zion_license_installation_'.md5($this->config->storageKey());
         $id = function_exists('get_option') ? get_option($option) : null;
         if (is_string($id) && $id !== '') {
             return $id;
@@ -464,7 +469,19 @@ final class LicenseManager
 
     public function licenseKey(): ?string
     {
-        return SecretStore::read($this->config->licenseOption());
+        $key = SecretStore::read($this->config->licenseOption());
+        if ($key !== null) {
+            return $key;
+        }
+
+        // Migrate a key saved by an older SDK without sharing future status
+        // data between plugin instances.
+        $legacy = SecretStore::read($this->config->legacyLicenseOption());
+        if ($legacy !== null) {
+            SecretStore::write($this->config->licenseOption(), $legacy);
+        }
+
+        return $legacy;
     }
 
     public function storeLicenseKey(string $licenseKey): void
@@ -480,7 +497,7 @@ final class LicenseManager
             'installation_uuid' => $this->installationId(),
             'site_url' => function_exists('home_url') ? home_url('/') : '',
             'plugin_version' => $this->header('Version'),
-            'sdk_version' => self::VERSION,
+            'sdk_version' => $this->sdkVersion(),
             'wordpress_version' => function_exists('get_bloginfo') ? get_bloginfo('version') : null,
             'php_version' => PHP_VERSION,
             'license_key' => $licenseKey,
@@ -602,7 +619,7 @@ final class LicenseManager
 
     public function callbackSecret(): string
     {
-        $option = 'zion_license_callback_secret_'.md5($this->config->productSlug);
+        $option = 'zion_license_callback_secret_'.md5($this->config->storageKey());
         $secret = function_exists('get_option') ? get_option($option) : null;
 
         if (is_string($secret) && preg_match('/^[a-f0-9]{64}$/', $secret)) {
@@ -676,32 +693,32 @@ final class LicenseManager
 
     private function heartbeatHook(): string
     {
-        return 'zion_license_heartbeat_'.md5($this->config->productSlug);
+        return 'zion_license_heartbeat_'.md5($this->config->storageKey());
     }
 
     private function licenseStateOption(): string
     {
-        return 'zion_license_state_'.md5($this->config->productSlug);
+        return 'zion_license_state_'.md5($this->config->storageKey());
     }
 
     private function detailsOption(): string
     {
-        return 'zion_license_details_'.md5($this->config->productSlug);
+        return 'zion_license_details_'.md5($this->config->storageKey());
     }
 
     private function lastPingOption(): string
     {
-        return 'zion_license_last_ping_'.md5($this->config->productSlug);
+        return 'zion_license_last_ping_'.md5($this->config->storageKey());
     }
 
     private function lastAdminRefreshOption(): string
     {
-        return 'zion_license_admin_refresh_'.md5($this->config->productSlug);
+        return 'zion_license_admin_refresh_'.md5($this->config->storageKey());
     }
 
     private function lastErrorOption(): string
     {
-        return 'zion_license_last_error_'.md5($this->config->productSlug);
+        return 'zion_license_last_error_'.md5($this->config->storageKey());
     }
 
     private function markOfflineFailure(\Throwable $exception): void
@@ -744,7 +761,7 @@ final class LicenseManager
 
     private function activationTokenOption(): string
     {
-        return 'zion_license_activation_token_'.md5($this->config->productSlug);
+        return 'zion_license_activation_token_'.md5($this->config->storageKey());
     }
 
     private function activationToken(): ?string
@@ -834,12 +851,12 @@ final class LicenseManager
 
     private function runtimeOption(): string
     {
-        return 'zion_license_runtime_'.md5($this->config->productSlug);
+        return 'zion_license_runtime_'.md5($this->config->storageKey());
     }
 
     private function telemetryConsentOption(): string
     {
-        return 'zion_license_telemetry_consent_'.md5($this->config->productSlug);
+        return 'zion_license_telemetry_consent_'.md5($this->config->storageKey());
     }
 
     private function pingIntervalHours(): int

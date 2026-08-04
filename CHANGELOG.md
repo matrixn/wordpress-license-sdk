@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.4.7] - 2026-08-04
+
+### Fixed
+
+- isolated license, runtime, heartbeat, callback, update and installation metadata per plugin instance;
+- preserved the license suffix and SDK version independently when multiple plugins use the SDK on one WordPress site;
+- reported each plugin's Composer-installed SDK version instead of relying only on the globally loaded PHP class;
+- migrated existing slug-based license keys into the isolated storage namespace.
+
 ## [0.4.5] - 2026-08-04
 
 ### Fixed

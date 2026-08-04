@@ -19,6 +19,7 @@ final class Config
         public readonly string $updatePublicKey = '',
         public readonly string $updateKeyId = '',
         public readonly bool $requireSignedUpdates = false,
+        public readonly ?string $sdkVersion = null,
     ) {}
 
     /** Validates the values supplied by the plugin bootstrap. */
@@ -42,7 +43,56 @@ final class Config
 
     public function licenseOption(): string
     {
+        return $this->licenseOption ?: 'zion_license_key_'.md5($this->storageKey());
+    }
+
+    /**
+     * Returns the local storage identity for this plugin instance.
+     *
+     * The product slug identifies the server-side product, while the main
+     * plugin file keeps two plugins from overwriting each other's options.
+     */
+    public function storageKey(): string
+    {
+        return $this->productSlug.'|'.strtolower(basename($this->pluginFile));
+    }
+
+    /** @return string The option key used by SDK versions before 0.4.7. */
+    public function legacyLicenseOption(): string
+    {
         return $this->licenseOption ?: 'zion_license_key_'.sanitize_key($this->productSlug);
+    }
+
+    /**
+     * Resolves the SDK version installed inside this plugin, even when
+     * another plugin loaded a different SDK class first in the same request.
+     */
+    public function installedSdkVersion(): string
+    {
+        if (is_string($this->sdkVersion) && trim($this->sdkVersion) !== '') {
+            return trim($this->sdkVersion);
+        }
+
+        $installedPath = dirname($this->pluginFile).'/vendor/composer/installed.php';
+        if (is_file($installedPath) && is_readable($installedPath)) {
+            try {
+                $installed = include $installedPath;
+                $versions = is_array($installed) && is_array($installed['versions'] ?? null)
+                    ? $installed['versions']
+                    : [];
+                $package = is_array($versions['zion/wordpress-license-sdk'] ?? null)
+                    ? $versions['zion/wordpress-license-sdk']
+                    : [];
+                $version = $package['pretty_version'] ?? $package['version'] ?? null;
+                if (is_string($version) && trim($version) !== '') {
+                    return ltrim(trim($version), 'v');
+                }
+            } catch (\Throwable) {
+                // Fall back to the loaded class version below.
+            }
+        }
+
+        return LicenseManager::VERSION;
     }
 
     public function displayName(): string

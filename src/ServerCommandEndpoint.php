@@ -35,7 +35,7 @@ final class ServerCommandEndpoint
             return new WP_Error('zion_invalid_signature', 'Invalid or expired Zion server signature.', ['status' => 401]);
         }
 
-        $nonceKey = 'zion_license_nonce_'.md5($this->config->productSlug.$nonce);
+        $nonceKey = 'zion_license_nonce_'.md5($this->config->storageKey().$nonce);
         if (function_exists('get_transient') && get_transient($nonceKey) !== false) {
             return new WP_Error('zion_replayed_request', 'This Zion server request was already processed.', ['status' => 409]);
         }
@@ -101,7 +101,7 @@ final class ServerCommandEndpoint
         $response = [
             'received' => true,
             'protocol_version' => Protocol::VERSION,
-            'sdk_version' => LicenseManager::VERSION,
+            'sdk_version' => $this->manager->sdkVersion(),
             'plugin_version' => $this->manager->installedVersion(),
             'update_available' => (bool) ($configuration['update_available'] ?? false),
             'latest_version' => $configuration['latest_version'] ?? null,

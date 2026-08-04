@@ -113,7 +113,7 @@ final class WordPressUpdateAdapter
             'blocked_reason' => $this->updateBlockedReason($configuration, $installed, $latest),
             'auto_update_allowed' => (bool) ($configuration['auto_update_allowed'] ?? false),
             'auto_update_enabled' => $this->isAutoUpdateEnabled(),
-            'sdk_version' => LicenseManager::VERSION,
+            'sdk_version' => $this->manager->sdkVersion(),
             'last_update_at' => function_exists('get_option') ? get_option($this->lastUpdateOption(), null) : null,
         ];
     }
@@ -277,7 +277,7 @@ final class WordPressUpdateAdapter
 
     private function lastUpdateOption(): string
     {
-        return 'zion_license_last_update_'.md5($this->config->productSlug);
+        return 'zion_license_last_update_'.md5($this->config->storageKey());
     }
 
     /** @param array<string, mixed> $configuration */
@@ -317,7 +317,7 @@ final class WordPressUpdateAdapter
             return false;
         }
 
-        return $minimumSdk === '' || version_compare(LicenseManager::VERSION, $minimumSdk, '>=');
+        return $minimumSdk === '' || version_compare($this->manager->sdkVersion(), $minimumSdk, '>=');
     }
 
     /** @param array<string, mixed> $configuration */

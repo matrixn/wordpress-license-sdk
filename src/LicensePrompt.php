@@ -410,27 +410,27 @@ final class LicensePrompt
 
     private function modalId(): string
     {
-        return 'zion-license-'.md5($this->config->productSlug);
+        return 'zion-license-'.md5($this->config->storageKey());
     }
 
     private function nonceAction(): string
     {
-        return 'zion-license-'.$this->config->productSlug;
+        return 'zion-license-'.md5($this->config->storageKey());
     }
 
     private function promptOption(): string
     {
-        return 'zion_license_prompt_'.md5($this->config->productSlug);
+        return 'zion_license_prompt_'.md5($this->config->storageKey());
     }
 
     private function stateOption(): string
     {
-        return 'zion_license_state_'.md5($this->config->productSlug);
+        return 'zion_license_state_'.md5($this->config->storageKey());
     }
 
     private function flashOption(): string
     {
-        return 'zion_license_flash_'.md5($this->config->productSlug);
+        return 'zion_license_flash_'.md5($this->config->storageKey());
     }
 
     private function pluginBasename(): string
@@ -440,7 +440,7 @@ final class LicensePrompt
 
     private function statusPageSlug(): string
     {
-        return 'zion-license-status-'.sanitize_key($this->config->productSlug);
+        return 'zion-license-status-'.md5($this->config->storageKey());
     }
 
     private function statusPageUrl(): string
@@ -450,12 +450,12 @@ final class LicensePrompt
 
     private function statusModalId(): string
     {
-        return 'zion-license-status-'.md5($this->config->productSlug);
+        return 'zion-license-status-'.md5($this->config->storageKey());
     }
 
     private function adminPostNonceAction(): string
     {
-        return 'zion-license-admin-post-'.$this->config->productSlug;
+        return 'zion-license-admin-post-'.md5($this->config->storageKey());
     }
 
     private function adminPostUrl(string $action): string
