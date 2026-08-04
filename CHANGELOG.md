@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.4.8] - 2026-08-04
+
+### Fixed
+
+- allow explicit compatibility aliases for license product codes after a product slug rename;
+- keep the canonical product slug independent from legacy license key prefixes.
+
 ## [0.4.7] - 2026-08-04
 
 ### Fixed

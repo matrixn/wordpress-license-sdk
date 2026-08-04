@@ -266,6 +266,10 @@ final class LicenseManager
     /** @return array<string, mixed> */
     public function ping(?string $licenseKey = null): array
     {
+        $runtime = $this->runtimeConfiguration();
+        $telemetryEnabled = ! array_key_exists('telemetry_enabled', $runtime) || (bool) $runtime['telemetry_enabled'];
+        $sendAdminEmail = $this->config->sendAdminEmail
+            && (! array_key_exists('send_admin_email', $runtime) || (bool) $runtime['send_admin_email']);
         $payload = [
             'product_slug' => $this->config->productSlug,
             'installation_uuid' => $this->installationId(),
@@ -278,14 +282,15 @@ final class LicenseManager
             'callback_secret' => $this->callbackSecret(),
         ];
 
-        if ($this->config->sendAdminEmail && function_exists('get_option')) {
+        if ($sendAdminEmail && function_exists('get_option')) {
             $payload['admin_email'] = get_option('admin_email');
         }
 
         $payload['telemetry_consent'] = $this->telemetryConsent();
-        if ($this->telemetryConsent()) {
+        if ($telemetryEnabled && $this->telemetryConsent()) {
             $payload['system_data'] = $this->systemData();
         }
+        $payload['telemetry_enabled'] = $telemetryEnabled;
         $headers = ['X-Zion-Product-Key' => $this->config->productKey];
         $token = $this->activationToken();
         if ($token !== null) {

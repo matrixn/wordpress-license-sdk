@@ -351,6 +351,7 @@ final class LicensePrompt
         $licenseSuffix = (string) ($status['license_key_suffix'] ?? '');
         $telemetryConsent = ! empty($status['telemetry_consent']);
         $telemetryEnabled = ! array_key_exists('telemetry_enabled', $status) || ! empty($status['telemetry_enabled']);
+        $updateChannel = (string) ($status['update_channel'] ?? $status['client_settings']['update_channel'] ?? 'stable');
         ?>
         <style>
             .zion-license-status-modal{position:fixed;z-index:100000;inset:0;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(15,23,42,.58)}

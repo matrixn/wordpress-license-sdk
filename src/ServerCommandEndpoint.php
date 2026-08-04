@@ -119,7 +119,7 @@ final class ServerCommandEndpoint
     private function sanitizeConfiguration(array $configuration): ?array
     {
         $result = [];
-        foreach (['protocol_version', 'minimum_sdk_version', 'recommended_sdk_version', 'latest_version', 'server_version', 'sdk_latest_version', 'details_url', 'package_url', 'package_expires_at', 'changelog', 'manifest_signature', 'manifest_key_id', 'release_channel'] as $key) {
+        foreach (['protocol_version', 'minimum_sdk_version', 'recommended_sdk_version', 'latest_version', 'server_version', 'sdk_latest_version', 'details_url', 'package_url', 'package_expires_at', 'changelog', 'manifest_signature', 'manifest_key_id', 'release_channel', 'update_channel'] as $key) {
             if (array_key_exists($key, $configuration) && ! is_scalar($configuration[$key]) && $configuration[$key] !== null) {
                 return null;
             }
@@ -137,10 +137,30 @@ final class ServerCommandEndpoint
             $result['manifest'] = $configuration['manifest'];
         }
 
-        foreach (['updates_paused', 'released', 'zip_available', 'update_available', 'auto_update_allowed', 'sdk_update_available'] as $key) {
+        foreach (['updates_paused', 'released', 'zip_available', 'update_available', 'auto_update_allowed', 'sdk_update_available', 'telemetry_enabled'] as $key) {
             if (array_key_exists($key, $configuration)) {
                 $result[$key] = (bool) $configuration[$key];
             }
+        }
+
+        if (isset($configuration['client_settings'])) {
+            if (! is_array($configuration['client_settings'])) {
+                return null;
+            }
+
+            $clientSettings = [];
+            foreach (['updates_paused', 'auto_update_allowed', 'telemetry_enabled'] as $key) {
+                if (array_key_exists($key, $configuration['client_settings'])) {
+                    $clientSettings[$key] = (bool) $configuration['client_settings'][$key];
+                }
+            }
+            if (isset($configuration['client_settings']['update_channel'])) {
+                if (! in_array($configuration['client_settings']['update_channel'], ['stable', 'beta', 'alpha'], true)) {
+                    return null;
+                }
+                $clientSettings['update_channel'] = $configuration['client_settings']['update_channel'];
+            }
+            $result['client_settings'] = $clientSettings;
         }
 
         if (isset($configuration['entitlements'])) {
