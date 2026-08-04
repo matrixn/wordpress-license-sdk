@@ -20,8 +20,6 @@ final class Config
         public readonly string $updateKeyId = '',
         public readonly bool $requireSignedUpdates = false,
         public readonly ?string $sdkVersion = null,
-        /** @var array<int, string> Additional license product codes accepted for legacy keys. */
-        public readonly array $additionalLicenseProductCodes = [],
     ) {}
 
     /** Validates the values supplied by the plugin bootstrap. */
@@ -129,22 +127,6 @@ final class Config
         return strtoupper(substr($slug, 0, 8));
     }
 
-    /**
-     * Returns the product codes accepted by the local format validator.
-     *
-     * The current code is derived from the canonical product slug. Additional
-     * codes are explicit compatibility aliases for keys issued before a slug rename.
-     *
-     * @return array<int, string>
-     */
-    public function acceptedLicenseProductCodes(): array
-    {
-        $codes = array_merge( [ $this->licenseProductCode() ], $this->additionalLicenseProductCodes );
-        $codes = array_map( static fn ( mixed $code ): string => strtoupper( trim( (string) $code ) ), $codes );
-        $codes = array_filter( $codes, static fn ( string $code ): bool => preg_match( '/^[A-Z0-9]+(?:-[A-Z0-9]+)*$/', $code ) === 1 );
-
-        return array_values( array_unique( $codes ) );
-    }
     public function licenseExample(): string
     {
         return 'ZION-'.$this->licenseProductCode().'-0BVAU-XQCFB';
@@ -157,8 +139,6 @@ final class Config
 
     public function licensePattern(): string
     {
-        $codes = array_map( static fn ( string $code ): string => preg_quote( $code, '/' ), $this->acceptedLicenseProductCodes() );
-
-        return '/^ZION-(?:'.implode( '|', $codes ).')-[A-Z0-9]{5}-[A-Z0-9]{5}$/';
+        return '/^ZION-'.preg_quote($this->licenseProductCode(), '/').'-[A-Z0-9]{5}-[A-Z0-9]{5}$/';
     }
 }

@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.4.9] - 2026-08-04
+
+### Changed
+
+- Removed legacy license product-code aliases; validation now follows only the canonical product slug.
+
+
+
 ## [0.4.8] - 2026-08-04
 
 ### Fixed
