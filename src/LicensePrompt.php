@@ -383,7 +383,7 @@ final class LicensePrompt
             </div>
         </div>
         <script>
-        (()=>{const modal=document.getElementById(<?php echo wp_json_encode($this->statusModalId()); ?>);if(!modal)return;const open=()=>{modal.classList.add('is-open');modal.setAttribute('aria-hidden','false')};const close=()=>{modal.classList.remove('is-open');modal.setAttribute('aria-hidden','true')};document.addEventListener('click',e=>{if(e.target.closest('[data-zion-license-status-open]')){e.preventDefault();open()}if(e.target===modal||e.target.closest('[data-zion-license-status-close]'))close()})})();
+        (()=>{const modal=document.getElementById(<?php echo wp_json_encode($this->statusModalId()); ?>);if(!modal)return;const open=()=>{modal.classList.add('is-open');modal.setAttribute('aria-hidden','false')};const close=()=>{modal.classList.remove('is-open');modal.setAttribute('aria-hidden','true')};document.addEventListener('click',e=>{const trigger=e.target.closest('[data-zion-license-status-open]');if(trigger&&trigger.dataset.zionLicenseStatusOpen===modal.id){e.preventDefault();open()}if(e.target===modal||e.target.closest('[data-zion-license-status-close]'))close()})})();
         </script>
         <?php
     }

@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-08-04
+
+### Fixed
+
+- status license modals now open only for the plugin link that was clicked;
+  multiple plugins using the SDK no longer open duplicate modal dialogs.
+
 ## [0.4.2] - 2026-08-02
 
 ### Added
