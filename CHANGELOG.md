@@ -8,8 +8,6 @@
 
 - Removed legacy license product-code aliases; validation now follows only the canonical product slug.
 
-
-
 ## [0.4.8] - 2026-08-04
 
 ### Fixed
