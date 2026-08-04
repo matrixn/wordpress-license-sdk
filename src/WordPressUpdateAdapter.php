@@ -106,6 +106,7 @@ final class WordPressUpdateAdapter
             'installed_version' => $installed,
             'latest_version' => $latest,
             'package_url' => $package,
+            'package_expires_at' => $configuration['package_expires_at'] ?? null,
             'details_url' => (string) ($configuration['details_url'] ?? rtrim($this->config->apiUrl, '/')),
             'changelog' => (string) ($configuration['changelog'] ?? ''),
             'manifest' => is_array($configuration['manifest'] ?? null) ? $configuration['manifest'] : [],
@@ -169,8 +170,23 @@ final class WordPressUpdateAdapter
     public function verifyPackageDownload(mixed $reply, string $package, mixed $upgrader): mixed
     {
         $status = $this->status(false);
-        if ($reply !== false || $package === '' || $package !== $status['package_url']) {
+        if ($reply !== false || $package === '' || ! $this->isAllowedPackageUrl($package)) {
             return $reply;
+        }
+
+        $downloadPackage = $package;
+        $cachedPackage = (string) ($status['package_url'] ?? '');
+        $expiresAt = isset($status['package_expires_at'])
+            ? strtotime((string) $status['package_expires_at'])
+            : false;
+        if ($package !== $cachedPackage || $expiresAt === false || $expiresAt <= time()) {
+            $this->manager->refreshForUpdateIfNeeded();
+            $status = $this->status(false);
+            $downloadPackage = (string) ($status['package_url'] ?? '');
+
+            if ($downloadPackage === '' || empty($status['available']) || ! $this->isAllowedPackageUrl($downloadPackage)) {
+                return new \WP_Error('zion_update_link_expired', 'Linkul temporar pentru actualizare a expirat. Reîmprospătează datele licenței și încearcă din nou.');
+            }
         }
 
         $sha256 = (string) ($status['manifest']['sha256'] ?? '');
@@ -186,7 +202,7 @@ final class WordPressUpdateAdapter
             return new \WP_Error('zion_download_api_unavailable', 'WordPress cannot download the update package.');
         }
 
-        $temporaryFile = download_url($package, 120);
+        $temporaryFile = download_url($downloadPackage, 120);
         if (is_wp_error($temporaryFile)) {
             return $temporaryFile;
         }

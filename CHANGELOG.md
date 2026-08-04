@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.4.10] - 2026-08-04
+
+### Fixed
+
+- refresh expired temporary update URLs during the WordPress download hook;
+- retry the package download with a newly signed URL instead of passing an expired link to WordPress.
+
 ## [0.4.9] - 2026-08-04
 
 ### Changed
