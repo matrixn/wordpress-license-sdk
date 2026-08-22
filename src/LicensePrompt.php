@@ -33,6 +33,14 @@ final class LicensePrompt
     public function markActivated(): void
     {
         update_option($this->promptOption(), '1', false);
+        try {
+            // An updates-only product is discovered from the signed product
+            // key on the first contact and does not require a license key.
+            $this->manager->ping(null);
+        } catch (\Throwable) {
+            // Activation must never break WordPress if the licensing server is
+            // temporarily unavailable; the scheduled heartbeat retries later.
+        }
     }
 
     public static function trigger(string $productSlug, ?string $label = null): string
@@ -81,8 +89,8 @@ final class LicensePrompt
                 $state = sanitize_key((string) ($response['license_state'] ?? 'unlicensed'));
                 update_option($this->stateOption(), $state, false);
                 $this->flash(
-                    in_array($state, ['active', 'free'], true) ? 'success' : 'error',
-                    in_array($state, ['active', 'free'], true)
+                    in_array($state, ['active', 'free', 'updates_only'], true) ? 'success' : 'error',
+                    in_array($state, ['active', 'free', 'updates_only'], true)
                         ? $this->t('Datele licenței și actualizările au fost reîmprospătate.')
                         : $this->t('Serverul a răspuns, dar licența nu este activă.'),
                 );
@@ -99,6 +107,25 @@ final class LicensePrompt
         }
 
         if ($key === '') {
+            if ($this->manager->isUpdatesOnly()) {
+                $telemetryConsent = ! empty($_POST['zion_telemetry_consent']);
+                $this->manager->setTelemetryConsent($telemetryConsent);
+
+                try {
+                    $response = $this->manager->activate(null, $telemetryConsent);
+                    $state = sanitize_key((string) ($response['license_state'] ?? 'unknown'));
+                    update_option($this->stateOption(), $state, false);
+                    if ($state === 'updates_only') {
+                        delete_option($this->promptOption());
+                        $this->flash('success', $this->t('Actualizările gratuite au fost activate pentru acest site.'));
+                    }
+                } catch (\Throwable) {
+                    $this->flash('error', $this->t('Nu am putut înregistra acest site pentru actualizări.'));
+                }
+
+                $this->redirect();
+            }
+
             $this->flash('error', $this->t('Introdu o cheie de licență înainte de validare.'));
             $this->redirect();
         }
@@ -126,7 +153,7 @@ final class LicensePrompt
             $state = isset($response['license_state']) ? sanitize_key((string) $response['license_state']) : 'unlicensed';
             update_option($this->stateOption(), $state, false);
 
-            if (in_array($state, ['active', 'free'], true)) {
+            if (in_array($state, ['active', 'free', 'updates_only'], true)) {
                 delete_option($this->promptOption());
                 $this->flash('success', $this->t('Licența a fost activată pentru acest site.'));
             } else {
@@ -278,14 +305,14 @@ final class LicensePrompt
         <div class="wrap zion-license-status"><h1><?php echo esc_html($this->t('Status licență')); ?> — <?php echo esc_html($this->config->displayName()); ?></h1>
             <?php if (is_array($flash)) { ?><div class="notice notice-<?php echo esc_attr($flash['type']); ?> is-dismissible"><p><?php echo esc_html($flash['message']); ?></p></div><?php } ?>
             <div class="zion-license-grid">
-                <div class="zion-license-card"><span><?php echo esc_html($this->t('Status')); ?></span><strong class="zion-license-state zion-license-state--<?php echo esc_attr((string) ($status['license_state'] ?? 'unknown')); ?>"><?php echo esc_html(ucfirst((string) ($status['license_state'] ?? 'unknown'))); ?></strong></div>
+                <div class="zion-license-card"><span><?php echo esc_html($this->t('Status')); ?></span><strong class="zion-license-state zion-license-state--<?php echo esc_attr((string) ($status['license_state'] ?? 'unknown')); ?>"><?php echo esc_html($this->stateLabel((string) ($status['license_state'] ?? 'unknown'))); ?></strong></div>
                 <div class="zion-license-card"><span><?php echo esc_html($this->t('Versiune instalată')); ?></span><strong><?php echo esc_html((string) ($status['installed_version'] ?? '—')); ?></strong></div>
                 <div class="zion-license-card"><span><?php echo esc_html($this->t('Ultimul ping')); ?></span><strong><?php echo esc_html((string) ($status['last_ping_at'] ?? '—')); ?></strong></div>
                 <div class="zion-license-card"><span><?php echo esc_html($this->t('Callback securizat')); ?></span><strong class="<?php echo $callback['registered'] ? 'is-ok' : 'is-error'; ?>"><?php echo $callback['registered'] ? esc_html($this->t('Înregistrat')) : esc_html($this->t('Lipsește')); ?></strong></div>
             </div>
             <div class="zion-license-panel"><h2><?php echo esc_html($this->t('Verifică și actualizează datele')); ?></h2><p><?php echo esc_html($this->t('Verificarea face un ping securizat către server, actualizează detaliile licenței și înregistrează callback-ul pentru comenzi de update.')); ?></p><form method="post"><?php wp_nonce_field($this->nonceAction()); ?><input type="hidden" name="zion_license_action" value="refresh_status"><input type="hidden" name="zion_license_product" value="<?php echo esc_attr($this->config->productSlug); ?>"><button class="button button-primary button-hero" type="submit"><?php echo esc_html($this->t('Verifică conexiunea și actualizează')); ?></button></form></div>
             <div class="zion-license-panel"><h2><?php echo esc_html($this->t('Detalii')); ?></h2><dl><dt><?php echo esc_html($this->t('Expiră la')); ?></dt><dd><?php echo esc_html((string) ($status['expires_at'] ?? '—')); ?></dd><dt><?php echo esc_html($this->t('Versiune instalată')); ?></dt><dd><?php echo esc_html((string) ($status['installed_version'] ?? '—')); ?></dd><dt><?php echo esc_html($this->t('Versiune disponibilă')); ?></dt><dd><?php echo esc_html((string) ($status['latest_version'] ?? '—')); ?><?php if (! empty($status['update_available'])) { ?> <strong class="is-ok"><?php echo esc_html($this->t('Actualizare disponibilă')); ?></strong><?php } ?></dd><dt><?php echo esc_html($this->t('SDK')); ?></dt><dd><?php echo esc_html((string) ($status['sdk_latest_version'] ?? $status['sdk_version'] ?? '—')); ?><?php if (! empty($status['sdk_update_available'])) { ?> <strong class="is-ok"><?php echo esc_html($this->t('SDK nou disponibil')); ?></strong><?php } ?></dd><dt><?php echo esc_html($this->t('Callback URL')); ?></dt><dd><code><?php echo esc_html((string) ($callback['url'] ?? '—')); ?></code></dd></dl></div>
-        </div><style>.zion-license-status{max-width:980px}.zion-license-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:24px 0}.zion-license-card,.zion-license-panel{background:#fff;border:1px solid #dcdcde;border-radius:12px;padding:22px;box-shadow:0 8px 28px rgba(16,24,40,.06)}.zion-license-card span{display:block;color:#646970;font-size:12px;text-transform:uppercase;letter-spacing:.08em}.zion-license-card strong{display:block;margin-top:10px;font-size:20px}.is-ok,.zion-license-state--active,.zion-license-state--free{color:#16803c}.is-error,.zion-license-state--unlicensed,.zion-license-state--unknown{color:#b42318}.zion-license-panel{margin:16px 0}.zion-license-panel h2{margin-top:0}.zion-license-panel dt{float:left;clear:left;width:180px;color:#646970;padding:7px 0}.zion-license-panel dd{margin-left:190px;padding:7px 0}.zion-license-panel code{word-break:break-all}@media(max-width:800px){.zion-license-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:480px){.zion-license-grid{grid-template-columns:1fr}.zion-license-panel dt{float:none;width:auto}.zion-license-panel dd{margin-left:0}}</style>
+        </div><style>.zion-license-status{max-width:980px}.zion-license-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:24px 0}.zion-license-card,.zion-license-panel{background:#fff;border:1px solid #dcdcde;border-radius:12px;padding:22px;box-shadow:0 8px 28px rgba(16,24,40,.06)}.zion-license-card span{display:block;color:#646970;font-size:12px;text-transform:uppercase;letter-spacing:.08em}.zion-license-card strong{display:block;margin-top:10px;font-size:20px}.is-ok,.zion-license-state--active,.zion-license-state--free,.zion-license-state--updates_only{color:#16803c}.is-error,.zion-license-state--unlicensed,.zion-license-state--unknown{color:#b42318}.zion-license-panel{margin:16px 0}.zion-license-panel h2{margin-top:0}.zion-license-panel dt{float:left;clear:left;width:180px;color:#646970;padding:7px 0}.zion-license-panel dd{margin-left:190px;padding:7px 0}.zion-license-panel code{word-break:break-all}@media(max-width:800px){.zion-license-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:480px){.zion-license-grid{grid-template-columns:1fr}.zion-license-panel dt{float:none;width:auto}.zion-license-panel dd{margin-left:0}}</style>
         <?php
     }
 
@@ -326,7 +353,7 @@ final class LicensePrompt
                 <?php wp_nonce_field($this->nonceAction()); ?>
                 <input type="hidden" name="zion_license_action" value="save"><input type="hidden" name="zion_license_product" value="<?php echo esc_attr($this->config->productSlug); ?>">
                 <label for="<?php echo esc_attr($this->modalId()); ?>-key"><?php echo esc_html($this->t('Cheie de licență')); ?></label>
-                <input id="<?php echo esc_attr($this->modalId()); ?>-key" type="text" name="zion_license_key" value="<?php echo esc_attr((string) ($this->manager->licenseKey() ?? '')); ?>" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="<?php echo esc_attr($this->config->licenseExample()); ?>" maxlength="<?php echo esc_attr((string) $this->config->licenseLength()); ?>" required>
+                <input id="<?php echo esc_attr($this->modalId()); ?>-key" type="text" name="zion_license_key" value="<?php echo esc_attr((string) ($this->manager->licenseKey() ?? '')); ?>" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="<?php echo esc_attr($this->config->licenseExample()); ?>" maxlength="<?php echo esc_attr((string) $this->config->licenseLength()); ?>" <?php echo $this->manager->isUpdatesOnly() ? '' : 'required'; ?>>
                 <small class="zion-license-dialog__hint" data-zion-license-hint><?php echo esc_html(sprintf($this->t('Format necesar: %s · %d caractere.'), $this->config->licenseExample(), $this->config->licenseLength())); ?></small>
                 <label class="zion-license-dialog__consent"><input type="checkbox" name="zion_telemetry_consent" value="1" <?php checked($this->manager->telemetryConsent(), true); ?>><span><strong><?php echo esc_html($this->t('Activează telemetria avansată')); ?></strong><small><?php echo esc_html($this->t('Opțional: trimitem doar date tehnice pentru compatibilitate și depanare — versiunea pluginului și SDK-ului, versiunea WordPress/PHP, limba, fusul orar, multisite și tema. Nu trimitem conținutul site-ului, chei de licență sau parole.')); ?></small></span></label>
                 <div class="zion-license-dialog__actions"><button class="button" type="button" data-zion-license-close><?php echo esc_html($this->t('Mai târziu')); ?></button><button class="button button-primary" type="submit"><?php echo esc_html($this->t('Validează și activează')); ?></button></div>
@@ -362,7 +389,7 @@ final class LicensePrompt
             <div class="zion-license-status-dialog">
                 <h2><?php echo esc_html($this->t('Status licență')); ?> — <?php echo esc_html($this->config->displayName()); ?></h2>
                 <div class="zion-license-status-grid">
-                    <div class="zion-license-status-card"><small><?php echo esc_html($this->t('Licență')); ?></small><strong><?php echo esc_html((string) ($status['license_state'] ?? 'unknown')); ?></strong></div>
+                    <div class="zion-license-status-card"><small><?php echo esc_html($this->t('Licență')); ?></small><strong><?php echo esc_html($this->stateLabel((string) ($status['license_state'] ?? 'unknown'))); ?></strong></div>
                     <div class="zion-license-status-card"><small><?php echo esc_html($this->t('Licență folosită')); ?></small><strong><?php echo esc_html($licenseSuffix !== '' ? '••••'.$licenseSuffix : '—'); ?></strong></div>
                     <div class="zion-license-status-card"><small><?php echo esc_html($this->t('Versiune instalată')); ?></small><strong><?php echo esc_html((string) ($status['installed_version'] ?? '—')); ?></strong></div>
                     <div class="zion-license-status-card"><small><?php echo esc_html($this->t('Versiune server')); ?></small><strong><?php echo esc_html((string) ($status['latest_version'] ?? '—')); ?><?php if ($updateAvailable) { ?> <em><?php echo esc_html($this->t('Update disponibil')); ?></em><?php } ?></strong></div>
@@ -391,7 +418,20 @@ final class LicensePrompt
 
     private function needsLicense(): bool
     {
-        return ! in_array((string) get_option($this->stateOption(), ''), ['active', 'free'], true);
+        return ! in_array((string) get_option($this->stateOption(), ''), ['active', 'free', 'updates_only'], true);
+    }
+
+    private function stateLabel(string $state): string
+    {
+        return match ($state) {
+            'updates_only' => $this->t('Actualizări gratuite'),
+            'active' => $this->t('Activă'),
+            'free' => $this->t('Free'),
+            'grace_period' => $this->t('Perioadă de grație'),
+            'revoked' => $this->t('Revocată'),
+            'deactivated' => $this->t('Dezactivată'),
+            default => ucfirst($state !== '' ? $state : 'unknown'),
+        };
     }
 
     private function t(string $text): string

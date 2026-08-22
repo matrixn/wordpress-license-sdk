@@ -6,7 +6,7 @@ use Zion\WordPressLicense\Exceptions\ApiException;
 
 final class LicenseManager
 {
-    public const VERSION = '0.4.9';
+    public const VERSION = '0.4.11';
 
     private ?LicensePrompt $prompt = null;
 
@@ -99,7 +99,16 @@ final class LicenseManager
         }
 
         $licenseKey = $this->licenseKey();
-        if (! is_string($licenseKey) || $licenseKey === '') {
+        if ((! is_string($licenseKey) || $licenseKey === '') && ! $this->isUpdatesOnly()) {
+            // The first admin request can discover an updates-only product
+            // without a license key. A valid product key still authenticates
+            // the request on the server.
+            try {
+                $this->ping(null);
+            } catch (\Throwable) {
+                // Never break wp-admin when the server is unavailable.
+            }
+
             return;
         }
 
@@ -183,13 +192,19 @@ final class LicenseManager
     {
         $plan = (string) ($this->runtimeConfiguration()['plan'] ?? 'free');
 
-        return in_array($plan, ['free', 'pro', 'business', 'agency'], true) ? $plan : 'free';
+        return in_array($plan, ['updates_only', 'free', 'pro', 'business', 'agency'], true) ? $plan : 'free';
+    }
+
+    public function isUpdatesOnly(): bool
+    {
+        return $this->plan() === 'updates_only'
+            || $this->effectiveLicenseState() === 'updates_only';
     }
 
     /** @return array<string, bool> */
     public function entitlements(): array
     {
-        if (! in_array($this->effectiveLicenseState(), ['active', 'grace_period', 'free'], true)) {
+        if (! in_array($this->effectiveLicenseState(), ['active', 'grace_period', 'free', 'updates_only'], true)) {
             return [];
         }
 
@@ -219,8 +234,8 @@ final class LicenseManager
             return $this->runtimeConfiguration();
         }
 
-        $licenseKey = $this->licenseKey() ?? '';
-        if (! is_string($licenseKey) || $licenseKey === '') {
+        $licenseKey = $this->licenseKey();
+        if ((! is_string($licenseKey) || $licenseKey === '') && ! $this->isUpdatesOnly()) {
             return $this->runtimeConfiguration();
         }
 
@@ -250,7 +265,7 @@ final class LicenseManager
         $packageExpired = $expiresAt === false || $expiresAt <= time();
         $updateAnnounced = ! empty($configuration['update_available']);
 
-        if ($updateAnnounced && $packageExpired && $this->licenseKey() !== null) {
+        if ($updateAnnounced && $packageExpired && ($this->licenseKey() !== null || $this->isUpdatesOnly())) {
             try {
                 return $this->ping($this->licenseKey());
             } catch (\Throwable $exception) {
@@ -457,8 +472,8 @@ final class LicenseManager
             return $this->runtimeConfiguration();
         }
 
-        $licenseKey = $this->licenseKey() ?? '';
-        if (! is_string($licenseKey) || $licenseKey === '') {
+        $licenseKey = $this->licenseKey();
+        if ((! is_string($licenseKey) || $licenseKey === '') && ! $this->isUpdatesOnly()) {
             throw new \RuntimeException('No license key is configured.');
         }
 
@@ -495,7 +510,7 @@ final class LicenseManager
     }
 
     /** @return array<string, mixed> */
-    public function activate(string $licenseKey, ?bool $telemetryConsent = null): array
+    public function activate(?string $licenseKey = null, ?bool $telemetryConsent = null): array
     {
         $payload = [
             'product_slug' => $this->config->productSlug,
@@ -517,7 +532,9 @@ final class LicenseManager
         if ($telemetryConsent !== null) {
             $this->setTelemetryConsent($telemetryConsent);
         }
-        $this->storeLicenseKey($licenseKey);
+        if (is_string($licenseKey) && $licenseKey !== '') {
+            $this->storeLicenseKey($licenseKey);
+        }
         if (is_string($data['activation_token'] ?? null)) {
             $this->storeActivationToken($data['activation_token']);
         }
@@ -751,13 +768,13 @@ final class LicenseManager
             return $state !== '' ? $state : LicenseState::Unconfigured->value;
         }
 
-        if ($state === 'active' && $this->config->offlinePolicy === OfflinePolicy::Lenient) {
+        if (in_array($state, ['active', 'free', 'updates_only'], true) && $this->config->offlinePolicy === OfflinePolicy::Lenient) {
             $graceUntil = isset($configuration['grace_until']) ? strtotime((string) $configuration['grace_until']) : false;
             if ($graceUntil !== false && $graceUntil > time()) {
                 return LicenseState::GracePeriod->value;
             }
             if (! array_key_exists('expires_at', $configuration) || $configuration['expires_at'] === null) {
-                return LicenseState::Active->value;
+                return $state;
             }
         }
 
@@ -789,7 +806,7 @@ final class LicenseManager
      * or revoke the installation token anymore. This is intentionally used
      * for both a graceful 200 response and a terminal 410 response.
      *
-     * @param array<string, mixed> $details
+     * @param  array<string, mixed>  $details
      * @return array<string, mixed>
      */
     private function markLocallyRevoked(array $details = []): array

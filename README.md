@@ -15,7 +15,7 @@ folosește `productSlug` și `productKey` ca identificatori publici ai produsulu
 cheia de licență, tokenul de activare și URL-urile temporare de update sunt
 gestionate de serverul Zion.
 
-Versiunea curentă: **0.4.2**.
+Versiunea curentă: **0.4.11**.
 
 La activare, administratorul poate alege explicit dacă permite telemetria
 avansată. Când este activată, SDK-ul trimite doar date tehnice de compatibilitate
@@ -34,6 +34,28 @@ $licenseManager->activate($licenseKey);
 $status = $licenseManager->validateLicense();
 $licenseManager->deactivate();
 ```
+
+### Produse cu actualizări gratuite
+
+Un produs poate fi configurat în Zion cu modul `updates_only`. Pentru acest mod
+nu se cere și nu se salvează o cheie de licență. `productKey` rămâne obligatoriu:
+este identificatorul public al produsului și autentifică primul contact al site-
+ului. SDK-ul trimite ping-ul inițial, iar serverul creează automat instalarea și
+emite tokenul opac per site.
+
+```php
+$status = $licenseManager->status();
+
+if ($status['license_state'] === 'updates_only') {
+    // Site-ul este înregistrat pentru update-uri fără licență comercială.
+    $this->showFreeUpdatesBadge();
+}
+```
+
+Serverul poate suspenda update-urile, modifica frecvența heartbeat-ului sau
+dezactiva auto-update-ul pentru fiecare instalare, la fel ca pentru un produs
+licențiat. SDK-ul nu consideră niciodată `productKey` un secret; nu include chei
+de publicare GitHub sau credențiale de server în plugin.
 
 Dezactivarea este explicită și eliberează activarea de pe server. Dezactivarea
 pluginului nu dezactivează automat licența.
