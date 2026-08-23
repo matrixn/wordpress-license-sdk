@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.4.12] - 2026-08-23
+
+### Fixed
+
+- preserve the plugin's active state during manual, automatic, and server-command updates;
+- reactivate an active single-site or multisite plugin after a successful package upgrade;
+- report a clear error when WordPress cannot reactivate the updated plugin, while leaving intentionally disabled plugins untouched.
+
 ## [0.4.11] - 2026-08-22
 
 ### Added

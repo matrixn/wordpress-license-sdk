@@ -135,6 +135,9 @@ final class WordPressUpdateAdapter
             return false;
         }
 
+        $plugin = plugin_basename($this->config->pluginFile);
+        $activationState = $this->captureActivationState($plugin);
+
         if (! class_exists('Plugin_Upgrader')) {
             require_once ABSPATH.'wp-admin/includes/class-wp-upgrader.php';
         }
@@ -146,22 +149,35 @@ final class WordPressUpdateAdapter
         $skin = new \Automatic_Upgrader_Skin;
         $upgrader = new \Plugin_Upgrader($skin);
         $result = $upgrader->upgrade(
-            plugin_basename($this->config->pluginFile),
+            $plugin,
             [
                 'package' => $status['package_url'],
                 'clear_destination' => true,
             ],
         );
 
-        if ($result !== false && ! is_wp_error($result) && function_exists('wp_clean_plugins_cache')) {
+        $updateSucceeded = $result !== false && ! is_wp_error($result);
+        $reactivationError = null;
+        if ($updateSucceeded && $activationState['active']) {
+            $reactivationError = $this->restoreActivation($plugin, $activationState['network']);
+            if ($reactivationError instanceof \WP_Error) {
+                // The package was updated, but the plugin must not remain
+                // silently disabled when it was active before the update.
+                $result = $reactivationError;
+            }
+        }
+
+        if ($updateSucceeded && ! $reactivationError instanceof \WP_Error && function_exists('wp_clean_plugins_cache')) {
             wp_clean_plugins_cache(true);
             update_option($this->lastUpdateOption(), current_time('mysql'), false);
         }
 
         $this->manager->reportUpdateResult(
             $status['latest_version'],
-            $result !== false && ! is_wp_error($result),
-            is_wp_error($result) ? $result->get_error_message() : null,
+            $updateSucceeded && ! $reactivationError instanceof \WP_Error,
+            $reactivationError instanceof \WP_Error
+                ? $reactivationError->get_error_message()
+                : (is_wp_error($result) ? $result->get_error_message() : null),
         );
 
         return $result;
@@ -294,6 +310,54 @@ final class WordPressUpdateAdapter
     private function lastUpdateOption(): string
     {
         return 'zion_license_last_update_'.md5($this->config->storageKey());
+    }
+
+    /** @return array{active: bool, network: bool} */
+    private function captureActivationState(string $plugin): array
+    {
+        if (! function_exists('activate_plugin')) {
+            require_once ABSPATH.'wp-admin/includes/plugin.php';
+        }
+
+        $network = function_exists('is_multisite')
+            && is_multisite()
+            && function_exists('is_plugin_active_for_network')
+            && is_plugin_active_for_network($plugin);
+        $active = $network
+            || (function_exists('is_plugin_active') && is_plugin_active($plugin));
+
+        return [
+            'active' => $active,
+            'network' => $network,
+        ];
+    }
+
+    private function restoreActivation(string $plugin, bool $network): ?\WP_Error
+    {
+        $alreadyActive = $network
+            ? (function_exists('is_plugin_active_for_network') && is_plugin_active_for_network($plugin))
+            : (function_exists('is_plugin_active') && is_plugin_active($plugin));
+        if ($alreadyActive) {
+            return null;
+        }
+
+        if (! function_exists('activate_plugin')) {
+            return new \WP_Error(
+                'zion_reactivation_unavailable',
+                'Pluginul a fost actualizat, dar WordPress nu poate încărca API-ul de reactivare.',
+            );
+        }
+
+        $activation = activate_plugin($plugin, '', $network, false);
+        if (is_wp_error($activation)) {
+            return new \WP_Error(
+                'zion_reactivation_failed',
+                'Pluginul a fost actualizat, dar reactivarea automată a eșuat: '.$activation->get_error_message(),
+                ['previous' => $activation],
+            );
+        }
+
+        return null;
     }
 
     /** @param array<string, mixed> $configuration */

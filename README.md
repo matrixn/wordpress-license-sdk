@@ -15,7 +15,12 @@ folosește `productSlug` și `productKey` ca identificatori publici ai produsulu
 cheia de licență, tokenul de activare și URL-urile temporare de update sunt
 gestionate de serverul Zion.
 
-Versiunea curentă: **0.4.11**.
+Versiunea curentă: **0.4.12**.
+
+La un update executat prin server, SDK-ul memorează dacă pluginul era activ
+înainte de instalare și îl reactivează automat după un update reușit. Pluginurile
+dezactivate intenționat rămân dezactivate; dacă reactivarea eșuează, rezultatul
+este raportat explicit către server în loc să ascundă problema.
 
 La activare, administratorul poate alege explicit dacă permite telemetria
 avansată. Când este activată, SDK-ul trimite doar date tehnice de compatibilitate
