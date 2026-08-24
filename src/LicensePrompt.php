@@ -326,7 +326,24 @@ final class LicensePrompt
 
     public function renderNotice(): void
     {
-        if (! current_user_can('manage_options') || ! $this->needsLicense()) {
+        if (! current_user_can('manage_options')) {
+            return;
+        }
+
+        // Manual update failures were previously stored in a transient but
+        // never rendered for licensed plugins, making the action look like a
+        // no-op. Surface the result on the Plugins screen for every product.
+        $flash = get_transient($this->flashOption());
+        if (is_array($flash)) {
+            delete_transient($this->flashOption());
+            printf(
+                '<div class="notice notice-%1$s is-dismissible zion-license-notice"><p>%2$s</p></div>',
+                esc_attr((string) ($flash['type'] ?? 'info')),
+                esc_html((string) ($flash['message'] ?? '')),
+            );
+        }
+
+        if (! $this->needsLicense()) {
             return;
         }
 
