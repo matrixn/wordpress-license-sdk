@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- isolate manual-update and auto-update admin actions when multiple SDK instances are loaded by WordPress;
+- validate the nonce only in the instance that owns the requested plugin, so update links no longer redirect or appear to do nothing.
+
 ## [0.4.12] - 2026-08-23
 
 ### Fixed
