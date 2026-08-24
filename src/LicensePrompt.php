@@ -235,10 +235,15 @@ final class LicensePrompt
             wp_die(esc_html($this->t('Nu ai permisiunea necesară.')), '', ['response' => 403]);
         }
 
-        check_admin_referer($this->adminPostNonceAction());
         if ($this->pluginBasename() !== sanitize_text_field(wp_unslash($_REQUEST['plugin'] ?? ''))) {
-            $this->redirect(admin_url('plugins.php'));
+            // Several plugins can load the SDK on the same WordPress site.
+            // All instances are registered on this admin-post hook; an
+            // unrelated instance must leave the request untouched so the
+            // matching plugin can validate its own nonce and handle it.
+            return;
         }
+
+        check_admin_referer($this->adminPostNonceAction());
 
         $status = $this->manager->status();
         if (empty($status['auto_update_allowed'])) {
@@ -267,10 +272,13 @@ final class LicensePrompt
             wp_die(esc_html($this->t('Nu ai permisiunea necesară.')), '', ['response' => 403]);
         }
 
-        check_admin_referer($this->adminPostNonceAction());
         if ($this->pluginBasename() !== sanitize_text_field(wp_unslash($_REQUEST['plugin'] ?? ''))) {
-            $this->redirect(admin_url('plugins.php'));
+            // See toggleAutoUpdate(): do not redirect or validate another
+            // plugin's nonce when multiple SDK instances share the hook.
+            return;
         }
+
+        check_admin_referer($this->adminPostNonceAction());
 
         try {
             $result = $this->manager->updateIfAvailable();
