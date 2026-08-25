@@ -157,13 +157,13 @@ final class WordPressUpdateAdapter
         $skin = new \Automatic_Upgrader_Skin;
         $upgrader = new \Plugin_Upgrader($skin);
         try {
-        $result = $upgrader->upgrade(
-            $plugin,
-            [
-                'package' => $status['package_url'],
-                'clear_destination' => true,
-            ],
-        );
+            $result = $upgrader->upgrade(
+                $plugin,
+                [
+                    'package' => $status['package_url'],
+                    'clear_destination' => true,
+                ],
+            );
         } catch (\Throwable $exception) {
             $message = sprintf(
                 'WordPress nu a putut porni updaterul: %s',
