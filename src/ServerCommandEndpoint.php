@@ -83,6 +83,7 @@ final class ServerCommandEndpoint
         $this->manager->storeRuntimeConfiguration($configuration);
 
         $autoUpdate = false;
+        $autoUpdateError = null;
         if (in_array($command, ['update_available', 'sync_configuration', 'force_update'], true) && function_exists('wp_update_plugins')) {
             if (function_exists('delete_site_transient')) {
                 delete_site_transient('update_plugins');
@@ -94,7 +95,12 @@ final class ServerCommandEndpoint
             $enabled = in_array($plugin, (array) get_site_option('auto_update_plugins', []), true)
                 || (function_exists('wp_is_auto_update_enabled_for_type') && wp_is_auto_update_enabled_for_type('plugin'));
             if (($enabled || $command === 'force_update') && ! empty($configuration['update_available']) && ! empty($configuration['auto_update_allowed'])) {
-                $autoUpdate = $this->manager->updateIfAvailable(true) !== false;
+                $updateResult = $this->manager->updateIfAvailable(true);
+                if (is_wp_error($updateResult)) {
+                    $autoUpdateError = $updateResult->get_error_message();
+                } else {
+                    $autoUpdate = $updateResult !== false;
+                }
             }
         }
 
@@ -106,6 +112,7 @@ final class ServerCommandEndpoint
             'update_available' => (bool) ($configuration['update_available'] ?? false),
             'latest_version' => $configuration['latest_version'] ?? null,
             'auto_update_attempted' => $autoUpdate,
+            'auto_update_error' => $autoUpdateError,
         ];
 
         if ($command !== 'force_update' && preg_match('/^zcmd_[a-f0-9]{64}$/', $idempotencyKey) === 1 && function_exists('set_transient')) {

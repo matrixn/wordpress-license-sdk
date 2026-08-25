@@ -6,6 +6,8 @@
 
 - isolate manual-update and auto-update admin actions when multiple SDK instances are loaded by WordPress;
 - validate the nonce only in the instance that owns the requested plugin, so update links no longer redirect or appear to do nothing.
+- load WordPress's filesystem API before running the upgrader from REST callbacks;
+- convert updater fatals into a controlled `WP_Error` response so the server can report the real client-side failure.
 
 ## [0.4.12] - 2026-08-23
 

@@ -142,12 +142,21 @@ final class WordPressUpdateAdapter
             require_once ABSPATH.'wp-admin/includes/class-wp-upgrader.php';
         }
 
+        // The REST callback can run outside the normal wp-admin bootstrap.
+        // Automatic_Upgrader_Skin calls request_filesystem_credentials(),
+        // which is defined by file.php and is not guaranteed to be loaded in
+        // a front-end or REST request.
+        if (! function_exists('request_filesystem_credentials')) {
+            require_once ABSPATH.'wp-admin/includes/file.php';
+        }
+
         if (! class_exists('Automatic_Upgrader_Skin')) {
             require_once ABSPATH.'wp-admin/includes/class-wp-upgrader-skin.php';
         }
 
         $skin = new \Automatic_Upgrader_Skin;
         $upgrader = new \Plugin_Upgrader($skin);
+        try {
         $result = $upgrader->upgrade(
             $plugin,
             [
@@ -155,6 +164,15 @@ final class WordPressUpdateAdapter
                 'clear_destination' => true,
             ],
         );
+        } catch (\Throwable $exception) {
+            $message = sprintf(
+                'WordPress nu a putut porni updaterul: %s',
+                $exception->getMessage(),
+            );
+            $this->manager->reportUpdateResult($status['latest_version'], false, $message);
+
+            return new \WP_Error('zion_update_failed', $message);
+        }
 
         $updateSucceeded = $result !== false && ! is_wp_error($result);
         $reactivationError = null;
